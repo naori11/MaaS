@@ -1,7 +1,7 @@
 # Technical Design Document: Math-as-a-Service
 
 **Author:** Juvan
-**Repository:** [github.com/naori11/maas](https://github.com/naori11/enterprise-calculator)
+**Repository:** [github.com/naori11/MaaS](https://github.com/naori11/enterprise-calculator)
 **Status:** Proposed / Active Development
 
 ---
