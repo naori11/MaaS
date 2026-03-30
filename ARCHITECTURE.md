@@ -32,6 +32,7 @@ To make this more ridiculous, I will be distributing each operation as a microse
   * Multiplication
   * Division
 * **Ledger Service:** Asynchronously records all transactions to a datastore
+* **Payment Service:** Integrates with **Xendit** for payment processing and webhook handling
 
 ---
 
