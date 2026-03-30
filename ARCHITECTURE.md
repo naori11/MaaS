@@ -40,9 +40,11 @@ To make this more ridiculous, I will be distributing each operation as a microse
 
 * **Frontend Interface:** Next.js, Tailwind CSS
 * **Backend Services:** FastAPI (Python)
+* **Package Manager:** pnpm
+* **Monorepo Setup:** Turborepo
 * **Database:** PostgreSQL (Azure Flexible Server)
 * **Infrastructure Provisioning:** Terraform
-* **Container Orchestration:** Azure Kubernetes Service (AKS) 
+* **Container Orchestration:** Azure Kubernetes Service (AKS)
 * **CI/CD Pipeline:** GitHub Actions
 * **Observability:** Prometheus, Grafana
 * **Secret Management:** Azure Key Vault
