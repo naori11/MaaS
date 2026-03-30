@@ -1,0 +1,74 @@
+# Generated .gitignore file for: Python, Next.js, Babel, PostgreSQL, Docker, GitHub Actions, Terraform, Kubernetes, VSCode, npm, Node
+# Created with FOSSA's DevOps Tools
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+venv/
+env/
+.env
+*.so
+
+# Next.js
+# Add Next.js-specific ignores here
+
+# Babel
+# Add Babel-specific ignores here
+
+# PostgreSQL
+# Add PostgreSQL-specific ignores here
+
+# Docker
+docker-compose.override.yml
+Dockerfile.override
+.dockerignore
+
+# GitHub Actions
+# Add GitHub Actions-specific ignores here
+
+# Terraform
+# Add Terraform-specific ignores here
+
+# Kubernetes
+# Add Kubernetes-specific ignores here
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# npm
+# Add npm-specific ignores here
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.env
+.DS_Store
+dist/
+.cache/
+coverage/
+
+# Common
+.DS_Store
+Thumbs.db
+*.log
+*.bak
+*.tmp
+*.swp
+*~
+
+# IDE and editor generated files
+.idea/
+*.sublime-*
+
+# Local environment files
+.env
+.env.local
+.env.*.local
