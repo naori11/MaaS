@@ -1,6 +1,25 @@
 services:
 
   # ---------------------------------------------
+  # API Gateway (Entry Point for Clients)
+  # ---------------------------------------------
+
+  api-gateway: # Name of the service
+    build: ./services/api-gateway # Directory containing the Dockerfile for the API Gateway service
+    ports:
+      - "4000:8000" # Expose port 8000 of the container to port 4000 on the host
+    environment: # Define environment variables for the API Gateway to know how to reach the operation services
+      - MATH_ADD_SERVICE_URL=http://math-add:8000
+      - MATH_SUBTRACT_SERVICE_URL=http://math-subtract:8000
+      - MATH_MULTIPLY_SERVICE_URL=http://math-multiply:8000
+      - MATH_DIVIDE_SERVICE_URL=http://math-divide:8000
+    depends_on: # Define services to depend on to ensure they start first
+      - math-add
+      - math-subtract
+      - math-multiply
+      - math-divide
+
+  # ---------------------------------------------
   # Core Business Logic (Operation Services)
   # ---------------------------------------------
 
