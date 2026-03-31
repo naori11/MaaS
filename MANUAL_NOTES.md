@@ -27,3 +27,10 @@ Testing Dockerfiles (Buidling and Running docker images)
 
 -   docker system prune | removes every image/build that are unused
 -   docker exec -it 'container_id' /bin/sh or /bin/bash | opens a live terminal within the container
+
+
+Docker Compose
+-   should be made after creating the initial services within the codebase (core business logic)
+-   docker compose file should grow alongside the codebase
+-   Dockerfile notes are commented under the docker-compose.yml file within this project.
+-   For environment variable injection for container routing, use the service name within the docker network (ex. http://math-add:8000)
