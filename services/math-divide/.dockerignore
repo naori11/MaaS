@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# Secrets & Local Configs
+.env
+*.env
+
+# Python Cache & Artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Testing & Dev Tools
+tests/
+.pytest_cache/
+coverage.xml
+.coverage
+requirements-dev.txt
+
+# IDEs
+.vscode/
+.idea/
