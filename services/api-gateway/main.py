@@ -1,13 +1,16 @@
 import uuid
+from datetime import datetime, timezone
 from threading import Lock
 from time import time
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from config import (
     IDENTITY_SERVICE_URL,
+    LEDGER_PUBLISH_TIMEOUT_SECONDS,
+    LEDGER_SERVICE_URL,
     MATH_ADD_SERVICE_URL,
     MATH_DIVIDE_SERVICE_URL,
     MATH_MULTIPLY_SERVICE_URL,
@@ -100,6 +103,51 @@ def _extract_upstream_error_message(response: httpx.Response) -> str:
     return "Upstream request failed"
 
 
+def _publishable_calculate_path(path: str) -> bool:
+    return path.startswith("/api/v1/calculate/")
+
+
+def _operation_type_from_path(path: str) -> str:
+    suffix = path.removeprefix("/api/v1/calculate/")
+    operation_map = {
+        "add": "addition",
+        "subtract": "subtraction",
+        "multiply": "multiplication",
+        "divide": "division",
+    }
+    return operation_map[suffix]
+
+
+def _build_ledger_event(request_id: str, path: str, request_payload: dict, response_payload: dict) -> dict:
+    return {
+        "request_id": request_id,
+        "operation_type": _operation_type_from_path(path),
+        "operand_a": request_payload["operand_a"],
+        "operand_b": request_payload["operand_b"],
+        "result": response_payload["result"],
+        "math_transaction_id": str(uuid.uuid4()),
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+async def _publish_ledger_event(event: dict, request_id: str) -> None:
+    timeout = httpx.Timeout(LEDGER_PUBLISH_TIMEOUT_SECONDS)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Request-ID": request_id,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            await client.post(
+                f"{LEDGER_SERVICE_URL}/api/v1/ledger/transactions",
+                json=event,
+                headers=headers,
+            )
+    except Exception:
+        pass
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     incoming_request_id = request.headers.get("X-Request-ID")
@@ -131,7 +179,7 @@ async def unhandled_exception_handler(request: Request, _):
     )
 
 
-async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
+async def _proxy_post(request: Request, upstream_url: str, background_tasks: BackgroundTasks | None = None) -> JSONResponse:
     _enforce_rate_limit(request)
 
     if _is_protected_route(request.url.path):
@@ -179,10 +227,18 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="Invalid upstream response") from exc
 
+    if background_tasks is not None and _publishable_calculate_path(request.url.path):
+        try:
+            ledger_event = _build_ledger_event(request_id, request.url.path, payload, response_payload)
+            background_tasks.add_task(_publish_ledger_event, ledger_event, request_id)
+        except Exception:
+            pass
+
     return JSONResponse(
         status_code=upstream_response.status_code,
         content=response_payload,
         headers={"X-Request-ID": request_id},
+        background=background_tasks,
     )
 
 
@@ -197,20 +253,20 @@ async def login(request: Request) -> JSONResponse:
 
 
 @app.post("/api/v1/calculate/add")
-async def add(request: Request) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/add"])
+async def add(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/add"], background_tasks)
 
 
 @app.post("/api/v1/calculate/subtract")
-async def subtract(request: Request) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/subtract"])
+async def subtract(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/subtract"], background_tasks)
 
 
 @app.post("/api/v1/calculate/multiply")
-async def multiply(request: Request) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/multiply"])
+async def multiply(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/multiply"], background_tasks)
 
 
 @app.post("/api/v1/calculate/divide")
-async def divide(request: Request) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/divide"])
+async def divide(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/divide"], background_tasks)
