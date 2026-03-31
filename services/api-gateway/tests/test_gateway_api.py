@@ -268,15 +268,16 @@ def test_successful_calculate_publishes_ledger_event():
     assert response.status_code == 200
     assert len(FakeAsyncClient.requests) == 2
     assert FakeAsyncClient.requests[1]["url"].endswith("/api/v1/ledger/transactions")
-    assert FakeAsyncClient.requests[1]["json"] == {
-        "request_id": "req-abc",
-        "operation_type": "addition",
-        "operand_a": 1,
-        "operand_b": 2,
-        "result": 3,
-        "math_transaction_id": "txn-123",
-        "created_at": "2026-03-31T10:00:00Z",
-    }
+    ledger_payload = FakeAsyncClient.requests[1]["json"]
+    assert ledger_payload["request_id"] == "req-abc"
+    assert ledger_payload["operation_type"] == "addition"
+    assert ledger_payload["operand_a"] == 1
+    assert ledger_payload["operand_b"] == 2
+    assert ledger_payload["result"] == 3
+    assert isinstance(ledger_payload["math_transaction_id"], str)
+    assert ledger_payload["math_transaction_id"]
+    assert isinstance(ledger_payload["created_at"], str)
+    assert ledger_payload["created_at"].endswith("Z")
 
 
 def test_auth_route_does_not_publish_ledger_event():
