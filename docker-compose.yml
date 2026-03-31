@@ -13,16 +13,19 @@ services:
       - MATH_SUBTRACT_SERVICE_URL=http://math-subtract:8000
       - MATH_MULTIPLY_SERVICE_URL=http://math-multiply:8000
       - MATH_DIVIDE_SERVICE_URL=http://math-divide:8000
+      - LEDGER_SERVICE_URL=http://ledger:8000
+      - LEDGER_PUBLISH_TIMEOUT_SECONDS=0.5 # Timeout for publishing to the ledger in seconds
     depends_on: # Define services to depend on to ensure they start first
       - math-add
       - math-subtract
       - math-multiply
       - math-divide
+      - ledger
 
   # ---------------------------------------------
   # Core Business Logic (Operation Services)
   # ---------------------------------------------
-
+  
   math-add: # Name of the service 
     build: ./services/math-add # Directory containing the Dockerfile for the math-add service
     ports:
@@ -42,3 +45,30 @@ services:
     build: ./services/math-divide # Directory containing the Dockerfile for the math-divide service
     ports:
       - "8014:8000"  # Expose port 8000 of the container to port 8014 on the host
+
+  ledger:
+    build: ./services/ledger # Directory containing the Dockerfile for the ledger service
+    # Port is commented out because the ledger service is not intended to be accessed directly from outside the Docker network. 
+    # It will be accessed by the API Gateway and other services internally.
+    # ports: 
+    #   - "8021:8000" # Expose port 8000 of the container to port 8021 on the host (optional, only needed for direct access to the ledger service)
+    environment:
+      - DATABASE_URL=postgresql://admin:supersecretpassword@postgres:5432/ledger_db
+
+  # ---------------------------------------------
+  # Data Layer (Database Service)
+  # ---------------------------------------------
+
+  postgres: # Name of the service
+    image: postgres:15-alpine # Use the official PostgreSQL image with Alpine Linux for a smaller footprint
+    ports:
+      - "5432:5432" # Expose port 5432 of the container to port 5432 on the host. Use the default PostgreSQL port for external access
+    environment: # Define environment variables for PostgreSQL configuration
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=supersecretpassword
+      - POSTGRES_DB=ledger_db
+    volumes: # Define a volume to save data persistently when the container is stopped or removed
+      - ledger_data:/var/lib/postgresql/data # Persist data in a named volume
+
+volumes: # Define named volumes for persistent data storage
+  ledger_data: # Name of the volume for PostgreSQL data
