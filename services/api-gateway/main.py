@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 
 from config import (
     IDENTITY_SERVICE_URL,
+    LEDGER_PUBLISH_TIMEOUT_SECONDS,
+    LEDGER_SERVICE_URL,
     MATH_ADD_SERVICE_URL,
     MATH_DIVIDE_SERVICE_URL,
     MATH_MULTIPLY_SERVICE_URL,
@@ -100,6 +102,37 @@ def _extract_upstream_error_message(response: httpx.Response) -> str:
     return "Upstream request failed"
 
 
+def _publishable_calculate_path(path: str) -> bool:
+    return path.startswith("/api/v1/calculate/")
+
+
+def _build_ledger_event(request_id: str, request_payload: dict, response_payload: dict) -> dict:
+    return {
+        "request_id": request_id,
+        "operation_type": response_payload["operation"],
+        "operand_a": request_payload["operand_a"],
+        "operand_b": request_payload["operand_b"],
+        "result": response_payload["result"],
+        "math_transaction_id": response_payload["transaction_id"],
+        "created_at": response_payload["timestamp"],
+    }
+
+
+async def _publish_ledger_event(event: dict, request_id: str) -> None:
+    timeout = httpx.Timeout(LEDGER_PUBLISH_TIMEOUT_SECONDS)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Request-ID": request_id,
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        await client.post(
+            f"{LEDGER_SERVICE_URL}/api/v1/ledger/transactions",
+            json=event,
+            headers=headers,
+        )
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     incoming_request_id = request.headers.get("X-Request-ID")
@@ -178,6 +211,13 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
         response_payload = upstream_response.json()
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="Invalid upstream response") from exc
+
+    if _publishable_calculate_path(request.url.path):
+        try:
+            ledger_event = _build_ledger_event(request_id, payload, response_payload)
+            await _publish_ledger_event(ledger_event, request_id)
+        except Exception:
+            pass
 
     return JSONResponse(
         status_code=upstream_response.status_code,

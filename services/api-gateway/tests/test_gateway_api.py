@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 import sys
 from typing import Any, Callable, ClassVar
@@ -6,9 +7,16 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+_SERVICE_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_SERVICE_DIR))
+sys.modules.pop("config", None)
 
-import main  # noqa: E402
+_MAIN_PATH = _SERVICE_DIR / "main.py"
+_SPEC = importlib.util.spec_from_file_location("api_gateway_main", _MAIN_PATH)
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError("Failed to load api-gateway main module spec")
+main = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(main)
 
 
 class FakeResponse:
@@ -231,3 +239,106 @@ def test_upstream_error_is_normalized_to_unified_shape():
     assert body["error"]["code"] == "bad_request"
     assert body["error"]["message"] == "Malformed payload"
     assert "request_id" in body
+
+
+def test_successful_calculate_publishes_ledger_event():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/calculate/add"):
+            return FakeResponse(
+                200,
+                {
+                    "operation": "addition",
+                    "result": 3,
+                    "transaction_id": "txn-123",
+                    "timestamp": "2026-03-31T10:00:00Z",
+                },
+            )
+        if url.endswith("/api/v1/ledger/transactions"):
+            return FakeResponse(202, {"status": "accepted"})
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": "Bearer token", "X-Request-ID": "req-abc"},
+    )
+
+    assert response.status_code == 200
+    assert len(FakeAsyncClient.requests) == 2
+    assert FakeAsyncClient.requests[1]["url"].endswith("/api/v1/ledger/transactions")
+    assert FakeAsyncClient.requests[1]["json"] == {
+        "request_id": "req-abc",
+        "operation_type": "addition",
+        "operand_a": 1,
+        "operand_b": 2,
+        "result": 3,
+        "math_transaction_id": "txn-123",
+        "created_at": "2026-03-31T10:00:00Z",
+    }
+
+
+def test_auth_route_does_not_publish_ledger_event():
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "user@example.com", "password": "secret"},
+    )
+
+    assert response.status_code == 200
+    assert len(FakeAsyncClient.requests) == 1
+    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/auth/login")
+
+
+def test_failed_calculate_does_not_publish_ledger_event():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/calculate/add"):
+            return FakeResponse(400, {"detail": "Malformed payload"})
+        if url.endswith("/api/v1/ledger/transactions"):
+            return FakeResponse(202, {"status": "accepted"})
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert response.status_code == 400
+    assert len(FakeAsyncClient.requests) == 1
+    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/calculate/add")
+
+
+def test_ledger_publish_failure_does_not_change_calculate_response():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/calculate/add"):
+            return FakeResponse(
+                200,
+                {
+                    "operation": "addition",
+                    "result": 3,
+                    "transaction_id": "txn-123",
+                    "timestamp": "2026-03-31T10:00:00Z",
+                },
+            )
+        if url.endswith("/api/v1/ledger/transactions"):
+            return httpx.RequestError("ledger unavailable")
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operation": "addition",
+        "result": 3,
+        "transaction_id": "txn-123",
+        "timestamp": "2026-03-31T10:00:00Z",
+    }
