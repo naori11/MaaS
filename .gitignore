@@ -24,7 +24,7 @@ env/
 # Docker
 docker-compose.override.yml
 Dockerfile.override
-.dockerignore
+# .dockerignore
 
 # GitHub Actions
 # Add GitHub Actions-specific ignores here
