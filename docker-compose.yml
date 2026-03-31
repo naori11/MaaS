@@ -1,0 +1,25 @@
+services:
+
+  # ---------------------------------------------
+  # Core Business Logic (Operation Services)
+  # ---------------------------------------------
+
+  math-add: # Name of the service 
+    build: ./services/math-add # Directory containing the Dockerfile for the math-add service
+    ports:
+      - "8011:8000"  # Expose port 8000 of the container to port 8011 on the host
+
+  math-subtract: # Name of the service
+    build: ./services/math-subtract # Directory containing the Dockerfile for the math-subtract service
+    ports:
+      - "8012:8000"  # Expose port 8000 of the container to port 8012 on the host
+
+  math-multiply: # Name of the service
+    build: ./services/math-multiply # Directory containing the Dockerfile for the math-multiply service
+    ports:
+      - "8013:8000"  # Expose port 8000 of the container to port 8013 on the host
+
+  math-divide: # Name of the service
+    build: ./services/math-divide # Directory containing the Dockerfile for the math-divide service
+    ports:
+      - "8014:8000"  # Expose port 8000 of the container to port 8014 on the host
