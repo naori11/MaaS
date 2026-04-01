@@ -71,7 +71,7 @@ services:
       - DATABASE_URL=postgresql://admin:supersecretpassword@postgres:5432/ledger_db
     depends_on:
       postgres:
-        condition: service_healthy # Ensure the identity service waits for the PostgreSQL database to be healthy before starting
+        condition: service_healthy # Ensure the ledger service waits for the PostgreSQL database to be healthy before starting
 
   # ---------------------------------------------
   # Data Layer (Database Service)

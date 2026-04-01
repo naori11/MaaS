@@ -13,10 +13,10 @@ sys.path.insert(0, str(_SERVICE_DIR))
 sys.modules.pop("config", None)
 sys.modules.pop("identity_main", None)
 
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("JWT_SECRET", "identity-test-secret")
-os.environ.setdefault("JWT_ALGORITHM", "HS256")
-os.environ.setdefault("JWT_EXPIRES_SECONDS", "3600")
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["JWT_SECRET"] = "identity-test-secret"
+os.environ["JWT_ALGORITHM"] = "HS256"
+os.environ["JWT_EXPIRES_SECONDS"] = "3600"
 
 _MAIN_PATH = _SERVICE_DIR / "main.py"
 _SPEC = importlib.util.spec_from_file_location("identity_main", _MAIN_PATH)

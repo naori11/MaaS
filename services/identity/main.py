@@ -17,6 +17,7 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import DateTime, String, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from config import DATABASE_URL, JWT_ALGORITHM, JWT_EXPIRES_SECONDS, JWT_SECRET
@@ -139,11 +140,22 @@ def _user_id_from_token(token: str) -> str:
     return user_id
 
 
+def _make_engine():
+    url = _database_url()
+    if ":memory:" in url:
+        return create_async_engine(
+            url,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+    return create_async_engine(url)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _SESSION_FACTORY
 
-    engine = create_async_engine(_database_url())
+    engine = _make_engine()
     _SESSION_FACTORY = async_sessionmaker(engine, expire_on_commit=False)
 
     async with engine.begin() as conn:
