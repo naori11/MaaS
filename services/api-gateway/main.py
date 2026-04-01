@@ -4,11 +4,15 @@ from threading import Lock
 from time import time
 
 import httpx
+import jwt
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from jwt import InvalidTokenError
 
 from config import (
     IDENTITY_SERVICE_URL,
+    JWT_ALGORITHM,
+    JWT_SECRET,
     LEDGER_PUBLISH_TIMEOUT_SECONDS,
     LEDGER_SERVICE_URL,
     MATH_ADD_SERVICE_URL,
@@ -27,6 +31,7 @@ app = FastAPI()
 _ROUTE_MAP = {
     "/api/v1/auth/register": f"{IDENTITY_SERVICE_URL}/api/v1/auth/register",
     "/api/v1/auth/login": f"{IDENTITY_SERVICE_URL}/api/v1/auth/login",
+    "/api/v1/auth/me": f"{IDENTITY_SERVICE_URL}/api/v1/auth/me",
     "/api/v1/calculate/add": f"{MATH_ADD_SERVICE_URL}/api/v1/calculate/add",
     "/api/v1/calculate/subtract": f"{MATH_SUBTRACT_SERVICE_URL}/api/v1/calculate/subtract",
     "/api/v1/calculate/multiply": f"{MATH_MULTIPLY_SERVICE_URL}/api/v1/calculate/multiply",
@@ -75,7 +80,7 @@ def _enforce_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
 
-def _enforce_bearer_presence(request: Request) -> None:
+def _enforce_valid_jwt(request: Request) -> None:
     authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
@@ -83,6 +88,14 @@ def _enforce_bearer_presence(request: Request) -> None:
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    if not JWT_SECRET:
+        raise HTTPException(status_code=500, detail="JWT secret not configured")
+
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid credentials") from exc
 
 
 def _extract_upstream_error_message(response: httpx.Response) -> str:
@@ -183,7 +196,7 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
     _enforce_rate_limit(request)
 
     if _is_protected_route(request.url.path):
-        _enforce_bearer_presence(request)
+        _enforce_valid_jwt(request)
 
     content_type = request.headers.get("Content-Type", "")
     if not content_type.lower().startswith("application/json"):
@@ -242,9 +255,52 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
     )
 
 
+async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
+    _enforce_rate_limit(request)
+
+    request_id = _request_id(request)
+    upstream_headers = {
+        "X-Request-ID": request_id,
+    }
+
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        upstream_headers["Authorization"] = authorization
+
+    timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            upstream_response = await client.get(upstream_url, headers=upstream_headers)
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=500, detail="Upstream service unavailable") from exc
+
+    if upstream_response.status_code >= 400:
+        raise HTTPException(
+            status_code=upstream_response.status_code,
+            detail=_extract_upstream_error_message(upstream_response),
+        )
+
+    try:
+        response_payload = upstream_response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Invalid upstream response") from exc
+
+    return JSONResponse(
+        status_code=upstream_response.status_code,
+        content=response_payload,
+        headers={"X-Request-ID": request_id},
+    )
+
+
 @app.post("/api/v1/auth/register")
 async def register(request: Request) -> JSONResponse:
     return await _proxy_post(request, _ROUTE_MAP["/api/v1/auth/register"])
+
+
+@app.get("/api/v1/auth/me")
+async def me(request: Request) -> JSONResponse:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/auth/me"])
 
 
 @app.post("/api/v1/auth/login")
