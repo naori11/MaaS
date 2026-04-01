@@ -1,15 +1,18 @@
 import importlib.util
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import sys
 from typing import Any, Callable, ClassVar
 
 import httpx
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 _SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_SERVICE_DIR))
 sys.modules.pop("config", None)
+sys.modules.pop("api_gateway_main", None)
 
 _MAIN_PATH = _SERVICE_DIR / "main.py"
 _SPEC = importlib.util.spec_from_file_location("api_gateway_main", _MAIN_PATH)
@@ -17,6 +20,15 @@ if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError("Failed to load api-gateway main module spec")
 main = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(main)
+
+
+def _valid_gateway_token(subject: str = "user-123") -> str:
+    payload = {
+        "sub": subject,
+        "iat": int(datetime.now(UTC).timestamp()),
+        "exp": int((datetime.now(UTC) + timedelta(minutes=5)).timestamp()),
+    }
+    return jwt.encode(payload, "gateway-test-secret", algorithm="HS256")
 
 
 class FakeResponse:
@@ -47,6 +59,7 @@ class FakeAsyncClient:
     async def post(self, url: str, json: dict[str, Any], headers: dict[str, str]) -> FakeResponse:
         self.__class__.requests.append(
             {
+                "method": "POST",
                 "url": url,
                 "json": json,
                 "headers": headers,
@@ -54,6 +67,20 @@ class FakeAsyncClient:
         )
 
         result = self.__class__.responder(url, json, headers)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    async def get(self, url: str, headers: dict[str, str]) -> FakeResponse:
+        self.__class__.requests.append(
+            {
+                "method": "GET",
+                "url": url,
+                "headers": headers,
+            }
+        )
+
+        result = self.__class__.responder(url, {}, headers)
         if isinstance(result, Exception):
             raise result
         return result
@@ -68,6 +95,8 @@ def setup(monkeypatch):
     monkeypatch.setattr(main.httpx, "AsyncClient", FakeAsyncClient)
     monkeypatch.setattr(main, "RATE_LIMIT_REQUESTS", 60)
     monkeypatch.setattr(main, "RATE_LIMIT_WINDOW_SECONDS", 60)
+    monkeypatch.setattr(main, "JWT_SECRET", "gateway-test-secret")
+    monkeypatch.setattr(main, "JWT_ALGORITHM", "HS256")
     FakeAsyncClient.requests = []
     FakeAsyncClient.responder = lambda url, json, headers: FakeResponse(200, {"ok": True})
     yield
@@ -92,25 +121,25 @@ def setup(monkeypatch):
         (
             "/api/v1/calculate/add",
             {"operand_a": 1, "operand_b": 2},
-            {"Authorization": "Bearer token"},
+            {"Authorization": f"Bearer {_valid_gateway_token()}"},
             f"{main.MATH_ADD_SERVICE_URL}/api/v1/calculate/add",
         ),
         (
             "/api/v1/calculate/subtract",
             {"operand_a": 4, "operand_b": 2},
-            {"Authorization": "Bearer token"},
+            {"Authorization": f"Bearer {_valid_gateway_token()}"},
             f"{main.MATH_SUBTRACT_SERVICE_URL}/api/v1/calculate/subtract",
         ),
         (
             "/api/v1/calculate/multiply",
             {"operand_a": 4, "operand_b": 2},
-            {"Authorization": "Bearer token"},
+            {"Authorization": f"Bearer {_valid_gateway_token()}"},
             f"{main.MATH_MULTIPLY_SERVICE_URL}/api/v1/calculate/multiply",
         ),
         (
             "/api/v1/calculate/divide",
             {"operand_a": 4, "operand_b": 2},
-            {"Authorization": "Bearer token"},
+            {"Authorization": f"Bearer {_valid_gateway_token()}"},
             f"{main.MATH_DIVIDE_SERVICE_URL}/api/v1/calculate/divide",
         ),
     ],
@@ -134,6 +163,53 @@ def test_protected_route_requires_bearer_header():
     assert "request_id" in body
 
 
+def test_protected_route_rejects_invalid_jwt():
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+    assert body["error"]["message"] == "Invalid credentials"
+
+
+def test_protected_route_rejects_expired_jwt():
+    expired = jwt.encode(
+        {
+            "sub": "user-123",
+            "iat": int((datetime.now(UTC) - timedelta(minutes=10)).timestamp()),
+            "exp": int((datetime.now(UTC) - timedelta(minutes=5)).timestamp()),
+        },
+        "gateway-test-secret",
+        algorithm="HS256",
+    )
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": f"Bearer {expired}"},
+    )
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+    assert body["error"]["message"] == "Invalid credentials"
+
+
+def test_valid_jwt_allows_protected_route():
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 200
+    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/calculate/add")
+
+
 def test_auth_routes_do_not_require_bearer_header():
     response = client.post(
         "/api/v1/auth/login",
@@ -143,18 +219,29 @@ def test_auth_routes_do_not_require_bearer_header():
     assert response.status_code == 200
 
 
+def test_auth_me_route_forwards_get_request_with_authorization():
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 200
+    assert FakeAsyncClient.requests[0]["method"] == "GET"
+    assert FakeAsyncClient.requests[0]["url"] == f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/me"
+
+
 def test_rate_limit_returns_429(monkeypatch):
     monkeypatch.setattr(main, "RATE_LIMIT_REQUESTS", 1)
 
     first = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
     second = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert first.status_code == 200
@@ -167,7 +254,7 @@ def test_request_id_is_forwarded_and_returned():
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
         headers={
-            "Authorization": "Bearer token",
+            "Authorization": f"Bearer {_valid_gateway_token()}",
             "X-Request-ID": "req-123",
         },
     )
@@ -181,7 +268,7 @@ def test_gateway_generates_request_id_when_missing():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert response.status_code == 200
@@ -195,7 +282,7 @@ def test_unified_error_shape_for_400_content_type_violation():
         "/api/v1/calculate/add",
         content="not-json",
         headers={
-            "Authorization": "Bearer token",
+            "Authorization": f"Bearer {_valid_gateway_token()}",
             "Content-Type": "text/plain",
         },
     )
@@ -214,7 +301,7 @@ def test_unified_error_shape_for_500_upstream_failure():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert response.status_code == 500
@@ -231,7 +318,7 @@ def test_upstream_error_is_normalized_to_unified_shape():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert response.status_code == 400
@@ -262,7 +349,7 @@ def test_successful_calculate_publishes_ledger_event():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token", "X-Request-ID": "req-abc"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-abc"},
     )
 
     assert response.status_code == 200
@@ -304,7 +391,7 @@ def test_failed_calculate_does_not_publish_ledger_event():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert response.status_code == 400
@@ -333,7 +420,7 @@ def test_ledger_publish_failure_does_not_change_calculate_response():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer token"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
     assert response.status_code == 200

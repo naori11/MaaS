@@ -40,3 +40,19 @@
     - When setting volumes, you have to redefine the volume tag along with the name of the volume that you set onto the end of the dockerfile. This tells the docker engine that this volume should persist independently of any container.
         - `volumes:`
             - `'volume_name':`  
+
+---
+
+- For issues such as the database image loading slower than the services that requires it:
+    - instead of calling the image name normally (e.g. - postgres), do the following:
+
+    - for the postgres image itself:
+    - `healthcheck:`
+      - `test: ["shell":"command"]` # Command to test database status (depends on database image pulled)
+      - `interval:` # Number of times to test
+      - `timeout:`  # Time to consider as failed test
+      - `retries:`  # Number of times to retry command
+
+    - for images that requires to connect to the postgres image:
+      - `postgres:` 
+        - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.

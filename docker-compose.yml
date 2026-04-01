@@ -9,13 +9,17 @@ services:
     ports:
       - "4000:8000" # Expose port 8000 of the container to port 4000 on the host
     environment: # Define environment variables for the API Gateway to know how to reach the operation services
+      - IDENTITY_SERVICE_URL=http://identity:8000
       - MATH_ADD_SERVICE_URL=http://math-add:8000
       - MATH_SUBTRACT_SERVICE_URL=http://math-subtract:8000
       - MATH_MULTIPLY_SERVICE_URL=http://math-multiply:8000
       - MATH_DIVIDE_SERVICE_URL=http://math-divide:8000
       - LEDGER_SERVICE_URL=http://ledger:8000
       - LEDGER_PUBLISH_TIMEOUT_SECONDS=0.5 # Timeout for publishing to the ledger in seconds
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
     depends_on: # Define services to depend on to ensure they start first
+      - identity
       - math-add
       - math-subtract
       - math-multiply
@@ -25,8 +29,19 @@ services:
   # ---------------------------------------------
   # Core Business Logic (Operation Services)
   # ---------------------------------------------
-  
-  math-add: # Name of the service 
+
+  identity: # Name of the service
+    build: ./services/identity
+    environment:
+      - DATABASE_URL=postgresql://admin:supersecretpassword@postgres:5432/ledger_db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRES_SECONDS=3600
+    depends_on:
+      postgres:
+        condition: service_healthy # Ensure the identity service waits for the PostgreSQL database to be healthy before starting
+
+  math-add: # Name of the service
     build: ./services/math-add # Directory containing the Dockerfile for the math-add service
     ports:
       - "8011:8000"  # Expose port 8000 of the container to port 8011 on the host
@@ -54,6 +69,9 @@ services:
     #   - "8021:8000" # Expose port 8000 of the container to port 8021 on the host (optional, only needed for direct access to the ledger service)
     environment:
       - DATABASE_URL=postgresql://admin:supersecretpassword@postgres:5432/ledger_db
+    depends_on:
+      postgres:
+        condition: service_healthy # Ensure the ledger service waits for the PostgreSQL database to be healthy before starting
 
   # ---------------------------------------------
   # Data Layer (Database Service)
@@ -69,6 +87,12 @@ services:
       - POSTGRES_DB=ledger_db
     volumes: # Define a volume to save data persistently when the container is stopped or removed
       - ledger_data:/var/lib/postgresql/data # Persist data in a named volume
+    healthcheck: # Define a health check to ensure the database is ready before other services try to connect
+      test: ["CMD-SHELL", "pg_isready -U admin -d ledger_db"] # Command to check if PostgreSQL is ready to accept connections
+      interval: 5s # Check every 5 seconds
+      timeout: 5s # If command returns no response within five seconds, count it as failed.
+      retries: 5 # After 5 failed attempts, the service will be marked as unhealthy
+      # start_period: 30s
 
 volumes: # Define named volumes for persistent data storage
   ledger_data: # Name of the volume for PostgreSQL data
