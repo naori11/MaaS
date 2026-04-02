@@ -76,16 +76,17 @@ _JWT_BYPASS_ROUTES = {
 
 def _requires_jwt(method: str, path: str) -> bool:
     route = (method.upper(), path)
+
+    # Explicitly allowlisted routes do NOT require JWT
     if route in _JWT_BYPASS_ROUTES:
         return False
 
-    if path.startswith("/api/v1/calculate/"):
+    # For all known routes in the gateway, require JWT by default
+    if path in _ROUTE_MAP:
         return True
 
-    return route in {
-        ("GET", "/api/v1/billing/status"),
-        ("POST", "/api/v1/billing/subscribe"),
-    }
+    # For unknown routes, do not enforce JWT at the gateway
+    return False
 
 
 def _enforce_rate_limit(request: Request) -> None:

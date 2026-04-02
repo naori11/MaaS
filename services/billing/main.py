@@ -18,6 +18,7 @@ from config import (
     get_database_url,
     get_jwt_algorithm,
     get_jwt_secret,
+    get_xendit_callback_token,
     get_xendit_secret_key,
 )
 
@@ -111,9 +112,10 @@ def _decode_user_id(authorization: str | None) -> str:
     if not token:
         raise HTTPException(status_code=401, detail="Invalid Authorization header")
 
-    jwt_secret = get_jwt_secret()
-    if not jwt_secret:
-        raise HTTPException(status_code=500, detail="JWT_SECRET is not configured")
+    try:
+        jwt_secret = get_jwt_secret()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail="JWT_SECRET is not configured") from exc
 
     try:
         payload = jwt.decode(token, jwt_secret, algorithms=[get_jwt_algorithm()])
@@ -239,6 +241,12 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
     amount = PLAN_PRICING[plan_name]
     external_id = f"upgrade_{user_id}_{uuid4()}"
 
+    invoice_url = _create_xendit_invoice(
+        external_id=external_id,
+        amount=amount,
+        description=f"{plan_name} Plan Upgrade",
+    )
+
     async with session_factory() as session:
         result = await session.execute(select(SubscriptionORM).where(SubscriptionORM.user_id == user_id))
         subscription = result.scalar_one_or_none()
@@ -258,17 +266,20 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
 
         await session.commit()
 
-    invoice_url = _create_xendit_invoice(
-        external_id=external_id,
-        amount=amount,
-        description=f"{plan_name} Plan Upgrade",
-    )
-
     return SubscribeResponse(invoice_url=invoice_url)
 
 
 @app.post("/api/v1/billing/webhook/xendit", response_model=WebhookResponse)
-async def billing_webhook_xendit(payload: XenditWebhookPayload) -> WebhookResponse:
+async def billing_webhook_xendit(
+    payload: XenditWebhookPayload,
+    x_callback_token: str | None = Header(default=None, alias="x-callback-token"),
+) -> WebhookResponse:
+    expected_token = get_xendit_callback_token()
+    if expected_token is not None:
+        if x_callback_token is None or x_callback_token != expected_token:
+            raise HTTPException(status_code=401, detail="Invalid or missing webhook callback token")
+    else:
+        logger.warning("XENDIT_CALLBACK_TOKEN is not configured; webhook requests are not authenticated")
     if payload.status != "PAID":
         return WebhookResponse(received=True)
 

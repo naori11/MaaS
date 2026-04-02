@@ -282,6 +282,14 @@ def test_auth_me_route_forwards_get_request_with_authorization():
     assert FakeAsyncClient.requests[0]["url"] == f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/me"
 
 
+def test_auth_me_route_requires_bearer_header():
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+
+
 def test_rate_limit_returns_429(monkeypatch):
     monkeypatch.setattr(main, "RATE_LIMIT_REQUESTS", 1)
 

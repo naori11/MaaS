@@ -16,6 +16,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["JWT_SECRET"] = "billing-test-secret"
 os.environ["JWT_ALGORITHM"] = "HS256"
 os.environ["XENDIT_SECRET_KEY"] = "xnd_test_key"
+os.environ["XENDIT_CALLBACK_TOKEN"] = "test-callback-token"
 
 _MAIN_PATH = _SERVICE_DIR / "main.py"
 _SPEC = importlib.util.spec_from_file_location("billing_main", _MAIN_PATH)
@@ -108,6 +109,7 @@ def test_webhook_paid_activates_subscription_for_user():
     with TestClient(main.app) as client:
         response = client.post(
             "/api/v1/billing/webhook/xendit",
+            headers={"x-callback-token": "test-callback-token"},
             json={
                 "external_id": f"upgrade_{user_id}_{uuid4()}",
                 "status": "PAID",
@@ -137,6 +139,7 @@ def test_webhook_non_paid_is_acknowledged_without_changes():
     with TestClient(main.app) as client:
         response = client.post(
             "/api/v1/billing/webhook/xendit",
+            headers={"x-callback-token": "test-callback-token"},
             json={
                 "external_id": f"upgrade_{user_id}_{uuid4()}",
                 "status": "PENDING",
@@ -145,3 +148,36 @@ def test_webhook_non_paid_is_acknowledged_without_changes():
 
     assert response.status_code == 200
     assert response.json() == {"received": True}
+
+
+def test_webhook_rejects_request_with_wrong_callback_token():
+    user_id = f"user-{uuid4().hex}"
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/billing/webhook/xendit",
+            headers={"x-callback-token": "wrong-token"},
+            json={
+                "external_id": f"upgrade_{user_id}_{uuid4()}",
+                "status": "PAID",
+                "paid_plan_name": "Premium",
+            },
+        )
+
+    assert response.status_code == 401
+
+
+def test_webhook_rejects_request_with_missing_callback_token():
+    user_id = f"user-{uuid4().hex}"
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/billing/webhook/xendit",
+            json={
+                "external_id": f"upgrade_{user_id}_{uuid4()}",
+                "status": "PAID",
+                "paid_plan_name": "Premium",
+            },
+        )
+
+    assert response.status_code == 401
