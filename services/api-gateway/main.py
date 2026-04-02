@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
 
 from config import (
+    BILLING_SERVICE_URL,
     IDENTITY_SERVICE_URL,
     JWT_ALGORITHM,
     JWT_SECRET,
@@ -32,6 +33,9 @@ _ROUTE_MAP = {
     "/api/v1/auth/register": f"{IDENTITY_SERVICE_URL}/api/v1/auth/register",
     "/api/v1/auth/login": f"{IDENTITY_SERVICE_URL}/api/v1/auth/login",
     "/api/v1/auth/me": f"{IDENTITY_SERVICE_URL}/api/v1/auth/me",
+    "/api/v1/billing/status": f"{BILLING_SERVICE_URL}/api/v1/billing/status",
+    "/api/v1/billing/subscribe": f"{BILLING_SERVICE_URL}/api/v1/billing/subscribe",
+    "/api/v1/billing/webhook/xendit": f"{BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit",
     "/api/v1/calculate/add": f"{MATH_ADD_SERVICE_URL}/api/v1/calculate/add",
     "/api/v1/calculate/subtract": f"{MATH_SUBTRACT_SERVICE_URL}/api/v1/calculate/subtract",
     "/api/v1/calculate/multiply": f"{MATH_MULTIPLY_SERVICE_URL}/api/v1/calculate/multiply",
@@ -63,8 +67,25 @@ def _error_payload(status_code: int, message: str, request_id: str) -> dict:
     }
 
 
-def _is_protected_route(path: str) -> bool:
-    return path.startswith("/api/v1/calculate/")
+_JWT_BYPASS_ROUTES = {
+    ("POST", "/api/v1/auth/register"),
+    ("POST", "/api/v1/auth/login"),
+    ("POST", "/api/v1/billing/webhook/xendit"),
+}
+
+
+def _requires_jwt(method: str, path: str) -> bool:
+    route = (method.upper(), path)
+    if route in _JWT_BYPASS_ROUTES:
+        return False
+
+    if path.startswith("/api/v1/calculate/"):
+        return True
+
+    return route in {
+        ("GET", "/api/v1/billing/status"),
+        ("POST", "/api/v1/billing/subscribe"),
+    }
 
 
 def _enforce_rate_limit(request: Request) -> None:
@@ -195,7 +216,7 @@ async def unhandled_exception_handler(request: Request, _):
 async def _proxy_post(request: Request, upstream_url: str, background_tasks: BackgroundTasks | None = None) -> JSONResponse:
     _enforce_rate_limit(request)
 
-    if _is_protected_route(request.url.path):
+    if _requires_jwt(request.method, request.url.path):
         _enforce_valid_jwt(request)
 
     content_type = request.headers.get("Content-Type", "")
@@ -258,6 +279,9 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
 async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
     _enforce_rate_limit(request)
 
+    if _requires_jwt(request.method, request.url.path):
+        _enforce_valid_jwt(request)
+
     request_id = _request_id(request)
     upstream_headers = {
         "X-Request-ID": request_id,
@@ -306,6 +330,21 @@ async def me(request: Request) -> JSONResponse:
 @app.post("/api/v1/auth/login")
 async def login(request: Request) -> JSONResponse:
     return await _proxy_post(request, _ROUTE_MAP["/api/v1/auth/login"])
+
+
+@app.get("/api/v1/billing/status")
+async def billing_status(request: Request) -> JSONResponse:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/billing/status"])
+
+
+@app.post("/api/v1/billing/subscribe")
+async def billing_subscribe(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/subscribe"])
+
+
+@app.post("/api/v1/billing/webhook/xendit")
+async def billing_webhook_xendit(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/webhook/xendit"])
 
 
 @app.post("/api/v1/calculate/add")

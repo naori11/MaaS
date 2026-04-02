@@ -119,6 +119,18 @@ def setup(monkeypatch):
             f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/login",
         ),
         (
+            "/api/v1/billing/subscribe",
+            {"plan_name": "Standard"},
+            {"Authorization": f"Bearer {_valid_gateway_token()}"},
+            f"{main.BILLING_SERVICE_URL}/api/v1/billing/subscribe",
+        ),
+        (
+            "/api/v1/billing/webhook/xendit",
+            {"external_id": "upgrade_user_123_11111111-1111-1111-1111-111111111111", "status": "PAID"},
+            {},
+            f"{main.BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit",
+        ),
+        (
             "/api/v1/calculate/add",
             {"operand_a": 1, "operand_b": 2},
             {"Authorization": f"Bearer {_valid_gateway_token()}"},
@@ -217,6 +229,46 @@ def test_auth_routes_do_not_require_bearer_header():
     )
 
     assert response.status_code == 200
+
+
+def test_billing_status_requires_bearer_header():
+    response = client.get("/api/v1/billing/status")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+
+
+def test_billing_subscribe_requires_bearer_header():
+    response = client.post(
+        "/api/v1/billing/subscribe",
+        json={"plan_name": "Standard"},
+    )
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+
+
+def test_billing_webhook_bypasses_jwt():
+    response = client.post(
+        "/api/v1/billing/webhook/xendit",
+        json={"external_id": "upgrade_user_123_11111111-1111-1111-1111-111111111111", "status": "PAID"},
+    )
+
+    assert response.status_code == 200
+    assert FakeAsyncClient.requests[0]["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit"
+
+
+def test_billing_status_forwards_get_request_with_authorization():
+    response = client.get(
+        "/api/v1/billing/status",
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 200
+    assert FakeAsyncClient.requests[0]["method"] == "GET"
+    assert FakeAsyncClient.requests[0]["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/status"
 
 
 def test_auth_me_route_forwards_get_request_with_authorization():
