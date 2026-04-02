@@ -102,8 +102,9 @@ services:
 
   postgres: # Name of the service
     image: postgres:15-alpine # Use the official PostgreSQL image with Alpine Linux for a smaller footprint
-    ports:
-      - "5432:5432" # Expose port 5432 of the container to port 5432 on the host. Use the default PostgreSQL port for external access
+    # Commented out the ports for PostgreSQL because it is not intended to be accessed directly from outside the Docker network.
+    # ports:
+    #   - "5432:5432" # Expose port 5432 of the container to port 5432 on the host. Use the default PostgreSQL port for external access
     environment: # Define environment variables for PostgreSQL configuration
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

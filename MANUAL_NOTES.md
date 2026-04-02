@@ -56,3 +56,5 @@
     - for images that requires to connect to the postgres image:
       - `postgres:` 
         - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.
+
+- For needing to run specific commands within the dedicated service/image, user `docker compose exec: 'service_name' 'command`
