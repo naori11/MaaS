@@ -12,7 +12,7 @@
   - put dependencies mainly for testing only (pytest, httpx)
   - standard dependencies for testing in python is pytest and httpx
 
-## Creating Dockerfiles
+# Creating Dockerfiles
 - Dockerfile notes are commented under each dockerfile within this project.
 - Always create a .dockerignore file. Put the files unnecessary for the deployed state such as unit tests, python caches, venv, .git and .gitignore files.
 
@@ -25,7 +25,7 @@
 - `docker system prune` | removes every image/build that are unused
 - `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | opens a live terminal within the container
 
-## Docker Compose
+# Docker Compose
 - Should be made after creating the initial services within the codebase (core business logic)
 - Docker compose file should grow alongside the codebase.
 - Dockerfile notes are commented under the docker-compose.yml file within this project.
@@ -58,3 +58,73 @@
         - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.
 
 - For needing to run specific commands within the dedicated service/image, user `docker compose exec: 'service_name' 'command`
+
+# Terraform
+- Made after creating the initial services cluster (the API.)
+
+
+
+
+# Notes to Self
+## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
+  - [ ] CIDR Notation
+  - [ ] IP Subnetting
+  - [ ] OSI Layer 
+    - [ ] Layer 4: TCP vs UDP
+    - [ ] Layer 7: HTTP, HTTPS, WebSockets
+  - [ ] Network Address Translation
+  - [ ] DNS
+  - [ ] Routing
+
+## Cloud Concepts
+  - [ ] Infrastructure as Code (IaC)
+  - [ ] State Files
+  - [ ] Shared Responsibility Model
+  - [ ] Virtual Machines (IaaS)
+  - [ ] App Services (PaaS)
+  - [ ] Container Registries (ACR)
+  - [ ] Kubernetes Services (AKS)
+  - [ ] Virtual Networks (VNet)
+  - [ ] Subnets
+  - [ ] Network Security Groups (NSG)
+  - [ ] Network Interfaces (NIC)
+  - [ ] Public IPs
+  - [ ] Load Balancers
+  - [ ] Application Gateways
+  - [ ] Managed Disks
+  - [ ] Blob Storage
+  - [ ] Managed Databases (SQL / PostgreSQL)
+  - [ ] Identity & Access Management (IAM)
+  - [ ] Role-Based Access Control (RBAC)
+  - [ ] Azure Entra ID
+  - [ ] Azure Key Vault
+  - [ ] Managed Identities
+  - [ ] Log Analytics / Azure Monitor
+
+## Linux Commands & Concepts
+  - [ ] Package Management (APT)
+  - [ ] GPG Keys & Keyrings
+  - [ ] Sources List (/etc/apt/sources.list.d/)
+  - [ ] File Permissions (chmod)
+  - [ ] Permission Bits (0755, a+r)
+  - [ ] File Ownership (chown)
+  - [ ] User & Group Management (usermod)
+  - [ ] Shell Redirection (|, >, >>)
+  - [ ] Environment Variables
+  - [ ] curl
+  - [ ] tee
+  - [ ] dpkg
+  - [ ] lsb_release
+
+## Additional DevOps & Backend Concepts
+  - [ ] CI/CD Pipelines
+  - [ ] GitHub Actions Workflows (.yml)
+  - [ ] Containerization (Docker)
+  - [ ] Container Orchestration
+  - [ ] Observability (Logging and Monitoring)
+  - [ ] Git Flow (rebase, cherry-pick)
+  - [ ] Reverse Proxies (Nginx, Caddy)
+  - [ ] SSL/TLS Certificates
+  - [ ] Microservices Architecture
+  - [ ] API Gateways
+  - [ ] Secret Management
