@@ -61,6 +61,11 @@
 
 # Terraform
 - Made after creating the initial services cluster (the API.)
+- `terraform init` | command for preparing terraform directory (.terraform). Donwloads necessary provider plugins (defined under terraform/required_providers block)
+- `terraform plan` | command that shows terraform execution plan to the actual infrastructure platform
+- `terraform apply` | applies the IaC by spinning up the resources defined within the code along with its configurations
+- `terraform destroy` | removes everything that is defined within the terraform configuration
+- `terraform fmt` | formats your code to make it more clean
 
 
 
