@@ -162,7 +162,7 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
   name                = "vm-maas-cluster"                       # The name of the virtual machine to be created in Azure.
   resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group where the virtual machine will be created, referencing the resource group defined above.
   location            = azurerm_resource_group.maas_rg.location # The location where the virtual machine will be created, referencing the resource group defined above.
-  size                = "Standard_B2ats_v2"                        # The size of the virtual machine, which determines the number of CPU cores, amount of RAM, and other resources allocated to the VM. "Standard_B1s" is a basic size suitable for small workloads and testing purposes.
+  size                = "Standard_B2ats_v2"                     # The size of the virtual machine, which determines the number of CPU cores, amount of RAM, and other resources allocated to the VM. "Standard_B1s" is a basic size suitable for small workloads and testing purposes.
   admin_username      = "azureuser"                             # The username for the administrator account on the virtual machine. This is the account that will be used to log in to the VM and perform administrative tasks. In production, it's recommended to use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables, instead of hardcoding them in the code.
   # admin_password      = "P@ssw0rd1234!"                         # In production, use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables.
 
@@ -237,6 +237,20 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
     sudo usermod -aG docker azureuser
     EOF
   )
+}
+
+# -----------------------------------------
+# Azure Container Registry (ACR) for MAAS Cluster
+# -----------------------------------------
+
+# Define an Azure Container Registry (ACR) for the MAAS cluster.
+# "azurerm_container_registry" is the resource type for creating a container registry in Azure, provided by the azurerm provider.
+resource "azurerm_container_registry" "maas_acr" {
+  name                = "acrmaascluster"                        # The name of the Azure Container Registry to be created in Azure.
+  resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group where the container registry will be created, referencing the resource group defined above.
+  location            = azurerm_resource_group.maas_rg.location # The location where the container registry will be created, referencing the resource group defined above.
+  sku                 = "Basic"                                 # The SKU (Stock Keeping Unit) for the container registry, which determines the features and pricing tier. "Basic" is a cost-effective option suitable for development and testing scenarios, providing essential features for storing and managing container images.
+  admin_enabled       = true                                    # Enable the admin user account for the container registry, which allows you to authenticate and manage the registry using a username and password. This is useful for development and testing purposes, but in production, it's recommended to use more secure authentication methods, such as Azure Active Directory or service principals.
 }
 
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
