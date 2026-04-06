@@ -1,0 +1,71 @@
+name: ACR Image Deployment # Name of the workflow that will be displayed in the GitHub Actions UI.
+
+on: # The events that trigger the workflow.
+  push: # Trigger the workflow on push events to the main branch.
+    branches:
+      - master
+
+jobs:
+  build-and-deploy: # Name of the job that will be displayed in the GitHub Actions UI.
+    runs-on: ubuntu-latest # The type of runner that the job will run on.
+
+    strategy: # Tells GitHub Actions to run the job repeatedly for each service defined in the matrix.
+      # Similar to for loop, but on steroids.
+      # The matrix allows us to define a set of variables (in this case, 'service') and GitHub Actions will automatically create a separate job for each value in the matrix.
+      # Then, the job will run in parallel (consecutively) for each service, allowing us to build and push Docker images for all services efficiently without having to write separate steps for each service.
+      matrix:
+        service:
+          - math-add
+          - math-subtract
+          - math-multiply
+          - math-divide
+          - api-gateway
+          - identity
+          - ledger
+          - billing
+
+    steps:
+      - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
+        uses: actions/checkout@v6 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+
+      - name: Login to Azure ACR
+        uses: azure/docker-login@v2 # Pre-built Azure module/repository to log in to Azure Container Registry (ACR) using Docker.
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }} # The login server of the Azure Container Registry, stored as a secret in GitHub.
+          username: ${{ secrets.ACR_USERNAME }} # The username for the Azure Container Registry, stored as a secret in GitHub.
+          password: ${{ secrets.ACR_PASSWORD }} # The password for the Azure Container Registry, stored as a secret in GitHub.
+
+      # To reduce the code blocks and avoid repetition within the pipeline.
+      # The strategy tag would be used to loop through the services and perform the build and push steps for each service.
+      # Commented out for reference:
+      # - name: Build and Push Math-Add Service
+      #   run: |
+      #     # Build the Docker image for the Math-Add service and tag it with the ACR login server and image name.
+      #     # The image is tagged with the GitHub SHA (commit hash) to ensure that each image is uniquely identifiable based on the commit that triggered the workflow.
+      #     docker build ./services/math-add -t ${{ secrets.ACR_LOGIN_SERVER }}/math-add:${{ github.sha }}
+
+      #     # Push the Docker image to Azure Container Registry with the commit hash as the tag for versioning and traceability.
+      #     docker push ${{ secrets.ACR_LOGIN_SERVER }}/math-add:${{ github.sha }}
+
+      #     # For versioning purposes, also tag the image as 'latest' and push it to Azure Container Registry.
+      #     # This allows users to pull the latest version of the image without specifying a tag.
+      #     docker build ./services/math-add -t ${{ secrets.ACR_LOGIN_SERVER }}/math-add:latest
+
+      #     # Push the 'latest' tagged image to Azure Container Registry.
+      #     docker push ${{ secrets.ACR_LOGIN_SERVER }}/math-add:latest
+
+      - name: Build and Push ${{ matrix.service }} Service # Name of the step that will be displayed in the GitHub Actions UI, dynamically showing the service being built and pushed.
+        run: |
+          # Build the Docker image for the current service in the matrix and tag it with the ACR login server and image name.
+          # The image is tagged with the GitHub SHA (commit hash) to ensure that each image is uniquely identifiable based on the commit that triggered the workflow.
+          docker build ./services/${{ matrix.service }} -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
+
+          # Push the Docker image to Azure Container Registry with the commit hash as the tag for versioning and traceability.
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
+
+          # For versioning purposes, also tag the image as 'latest' and push it to Azure Container Registry. 
+          # This allows users to pull the latest version of the image without specifying a tag.
+          docker build ./services/${{ matrix.service }} -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
+
+          # Push the 'latest' tagged image to Azure Container Registry.
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
