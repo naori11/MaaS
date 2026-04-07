@@ -13,7 +13,14 @@ env/
 *.so
 
 # Next.js
-# Add Next.js-specific ignores here
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Turborepo
+.turbo/
 
 # Babel
 # Add Babel-specific ignores here
