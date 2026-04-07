@@ -59,7 +59,7 @@
 
 - For needing to run specific commands within the dedicated service/image, user `docker compose exec: 'service_name' 'command`
 
-# Terraform
+# Terraform (IaC - Infrastructure as Code)
 - Made after creating the initial services cluster (the API.)
 - `terraform init` | command for preparing terraform directory (.terraform). Donwloads necessary provider plugins (defined under terraform/required_providers block)
 - `terraform plan` | command that shows terraform execution plan to the actual infrastructure platform
@@ -67,7 +67,21 @@
 - `terraform destroy` | removes everything that is defined within the terraform configuration
 - `terraform fmt` | formats your code to make it more clean
 
+# Azure Container Registry (ACR)
+- Basically storage of Docker Images to be deployed within the VM
+- Docker images are built within Github Actions (CI/CD) and pushed within ACR
+- admin_enabled is set as true to have a username and password credentials to put within Github Actions secrets
 
+# GitHub Actions
+- Ideal pipelines for development:
+  - Pull Requests:
+    - Linting and Formatting (Did the developer follow the team's style guide? (e.g., no messy spacing, correct variable casing). If it fails, block the PR.)
+    - Unit Testing (Unit tests made for each service)
+    - Security Check (Are there any hardcoded passwords or glaring SQL injection vulnerabilities?)
+  - Commit to Prod/Main Branch
+    - Retest (Optional)
+    - Build Docker Image and Push to ACR
+    - Deployment to VM
 
 
 # Notes to Self
