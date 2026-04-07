@@ -12,12 +12,14 @@ MaaS exposes authenticated math APIs and subscription capabilities through an AP
 
 ### Current local capabilities
 
+- Next.js + Tailwind frontend scaffold in `apps/web`
 - API Gateway routing and centralized JWT enforcement
 - Identity service (`register`, `login`, `me`)
 - Billing service with Xendit invoice creation + webhook handling
 - Ledger service for async transaction ingestion and retrieval
 - Isolated math worker services (add/subtract/multiply/divide)
 - PostgreSQL-backed persistence via Docker Compose
+- pnpm + Turborepo workspace orchestration for frontend and backend tooling
 
 ### Strategic architecture vision
 
@@ -28,7 +30,8 @@ The architecture blueprint (`ARCHITECTURE.md`) targets a full DevOps platform in
 ## Architecture at a Glance
 
 - **Client Layer**
-  - Web frontend for user interaction and API consumption **[TBD] (Planned)**
+  - Web frontend scaffold in `apps/web` (Next.js + Tailwind)
+  - Prepared for API Gateway consumption workflows
 - **API Gateway** (`services/api-gateway`)
   - Single public ingress (`localhost:4000`)
   - Routes traffic to internal services over Docker network
@@ -86,6 +89,7 @@ Only the gateway exposes a host port by default.
 
 ## Prerequisites
 
+- Node.js 20+ and pnpm (`pnpm@10.x`)
 - Docker Desktop (or Docker Engine + Compose plugin)
 - Git
 - A local `.env` file in repository root
@@ -99,6 +103,12 @@ cp .env.example .env
 ```
 
 2. Replace placeholder values with secure secrets.
+
+3. Install workspace dependencies:
+
+```bash
+pnpm install
+```
 
 ### Environment variables
 
@@ -120,6 +130,50 @@ cp .env.example .env
 | `LEDGER_QUEUE_MAXSIZE` | Optional | Ledger ingest queue size |
 
 > Security note: never commit `.env` or real secrets. Use sandbox/test keys for local development.
+
+---
+
+## Monorepo Commands (pnpm + Turborepo)
+
+From repository root:
+
+### Run all workspace tasks
+
+```bash
+pnpm dev
+pnpm build
+pnpm lint
+pnpm test
+```
+
+### Frontend (`apps/web`)
+
+```bash
+pnpm --filter web dev
+pnpm --filter web build
+pnpm --filter web lint
+```
+
+### Backend services (tooling scripts)
+
+```bash
+pnpm --filter api-gateway dev
+pnpm --filter identity lint
+pnpm --filter math-add test
+```
+
+### Turborepo filtered runs
+
+```bash
+pnpm turbo run lint --filter=identity
+pnpm turbo run test --filter=math-add
+```
+
+### List workspace packages
+
+```bash
+pnpm -r list --depth -1
+```
 
 ---
 
@@ -187,7 +241,7 @@ When the cluster is running, interactive OpenAPI docs are available at:
 
 The following items are part of the architecture blueprint and are included intentionally as planned work.
 
-- **Frontend client layer (Next.js + Tailwind)** **[TBD] (Planned)**
+- **Frontend client layer baseline (Next.js + Tailwind) initialized in `apps/web`; integration with gateway/auth flows is in progress**
 - **Terraform-managed Azure infrastructure (VNet, subnets, IAM, AKS, PostgreSQL)** **[TBD] (Planned)**
 - **Remote Terraform state in Azure Blob Storage** **[TBD] (Planned)**
 - **AKS production deployment and rolling updates** **[TBD] (Planned)**
@@ -202,6 +256,8 @@ The following items are part of the architecture blueprint and are included inte
 ## Repository Structure
 
 ```text
+apps/
+  web/
 services/
   api-gateway/
   identity/
