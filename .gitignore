@@ -18,6 +18,7 @@ out/
 .vercel/
 *.tsbuildinfo
 next-env.d.ts
+!apps/web/next-env.d.ts
 
 # Turborepo
 .turbo/
