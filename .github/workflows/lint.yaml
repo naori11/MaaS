@@ -1,0 +1,52 @@
+name: Linting # Name of the workflow that will be displayed in the GitHub Actions UI.
+
+on: # The events that trigger the workflow.
+  push: # Trigger the workflow on push events to the main branch.
+    branches:
+      - master
+  pull_request: # Trigger the workflow on pull request events targeting the main branch.
+    branches:
+      - master
+
+permissions: # Minimum token permissions for this workflow.
+  contents: read  # Allow read-only access to repository contents.
+
+concurrency: # Prevent duplicate lint runs on the same branch/PR.
+  group: lint-${{ github.workflow }}-${{ github.ref }} # Unique group key per workflow + git ref.
+  cancel-in-progress: true # Cancel older in-progress run if a new one starts for the same group.
+
+jobs: # Jobs executed by this workflow.
+  lint: # Name of the job shown in the Actions UI.
+    runs-on: ubuntu-latest # Use GitHub-hosted Ubuntu runner.
+    # timeout-minutes: 20 # Stop the job if it exceeds 20 minutes.
+
+    # Ordered list of steps inside this job.
+    steps:
+      - name: Checkout code
+        # Fetch repository files into the runner workspace.
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4 # Install pnpm tool on the runner.
+        with: # Inputs for the pnpm setup action.
+          version: 10.33.0 # Pin pnpm version to match this repo.
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4 # Install Node.js runtime and enable dependency cache.
+        with: # Inputs for Node setup.
+          node-version: 22 # Use Node 22 for consistency in CI.
+          cache: pnpm # Enable pnpm package cache for faster installs.
+
+      - name: Set up Python
+        uses: actions/setup-python@v5 # Install Python runtime for Python service lint tools.
+        with: # Inputs for Python setup.
+          python-version: "3.12" # Use Python 3.12 in CI.
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff # Install/upgrade pip and install Ruff used by Python services.
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile # Install workspace dependencies exactly from lockfile.
+
+      - name: Run monorepo lint
+        run: pnpm turbo run lint # Run lint task across all packages through Turborepo.

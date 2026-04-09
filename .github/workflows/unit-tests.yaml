@@ -1,0 +1,80 @@
+name: Unit Tests # Human-readable workflow name shown in GitHub Actions UI.
+
+on: # Events that trigger this workflow.
+  pull_request: # Run unit tests for PRs targeting master.
+    branches:
+      - master
+  push: # Run unit tests for direct pushes to master.
+    branches:
+      - master
+
+permissions: # Minimum permissions required by this workflow.
+  contents: read # Read-only access to repository contents.
+
+concurrency: # Avoid duplicate runs for the same branch/PR.
+  group: test-${{ github.workflow }}-${{ github.ref }} # Group by workflow name and git ref.
+  cancel-in-progress: true # Cancel older run when a newer commit is pushed.
+
+jobs:
+  test: # Single job that runs all monorepo unit tests.
+    runs-on: ubuntu-latest # Use Ubuntu runner hosted by GitHub.
+    timeout-minutes: 30 # Stop job if it takes too long.
+
+    services: # Start a PostgreSQL container for ledger dedicated unit tests.
+      postgres: # Service container name exposed to this job.
+        image: postgres:15-alpine # Official PostgreSQL image used during CI.
+        env: # Environment variables for Postgres initialization.
+          POSTGRES_USER: postgres # Default Postgres user for CI.
+          POSTGRES_PASSWORD: postgres # Default Postgres password for CI.
+          POSTGRES_DB: ledger_test_db # Dedicated test database created at startup.
+        ports: # Publish Postgres port to the runner.
+          - 5432:5432
+        options: >- # Health check so tests start only when DB is ready.
+          --health-cmd "pg_isready -U postgres -d ledger_test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env: # Environment variables available to all steps in this job.
+      LEDGER_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ledger_test_db # Dedicated database URL required by ledger unit tests.
+
+    steps:
+      - name: Checkout code # Clone repository into the runner.
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm # Install pnpm CLI on the runner.
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0 # Pin pnpm version to match repository.
+
+      - name: Set up Node.js # Install Node.js and enable pnpm caching.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22 # Use Node 22 in CI.
+          cache: pnpm # Cache pnpm store automatically.
+
+      - name: Set up Python # Install Python runtime for service tests.
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # Use Python 3.12 in CI.
+
+      - name: Install Node dependencies # Install workspace JS dependencies from lockfile.
+        run: pnpm install --frozen-lockfile
+
+      - name: Install service Python dependencies # Install Python dependencies for each service.
+        run: |
+          # Install and upgrade pip to ensure compatibility with all packages.
+          python -m pip install --upgrade pip
+
+          # Loop through each service and install its production dependencies.
+          for requirements in services/*/requirements.txt; do
+            pip install -r "$requirements"
+          done
+
+          # Loop through each service and install its development dependencies.
+          for requirements_dev in services/*/requirements-dev.txt; do
+            pip install -r "$requirements_dev"
+          done
+
+      - name: Run monorepo unit tests # Run all unit tests through Turborepo task graph.
+        run: pnpm turbo run test
