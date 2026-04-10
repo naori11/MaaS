@@ -1,17 +1,40 @@
-import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import Home from "./page";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const redirect = vi.fn();
+const cookies = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  redirect,
+}));
+
+vi.mock("next/headers", () => ({
+  cookies,
+}));
 
 describe("Home page", () => {
-  it("renders the initialized frontend text", () => {
-    render(<Home />);
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    expect(
-      screen.getByRole("heading", { name: "Math-as-a-Service" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Next.js + Tailwind frontend initialized."),
-    ).toBeInTheDocument();
+  it("redirects unauthenticated users to login", async () => {
+    cookies.mockResolvedValue({
+      get: vi.fn().mockReturnValue(undefined),
+    });
+
+    const { default: Home } = await import("./page");
+    await Home();
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+  });
+
+  it("redirects authenticated users to calculator", async () => {
+    cookies.mockResolvedValue({
+      get: vi.fn().mockReturnValue({ value: "1" }),
+    });
+
+    const { default: Home } = await import("./page");
+    await Home();
+
+    expect(redirect).toHaveBeenCalledWith("/calculator/focused");
   });
 });
