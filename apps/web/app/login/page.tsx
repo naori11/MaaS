@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AuthShell } from "../_components/auth-shell";
@@ -9,13 +9,23 @@ import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextPath = useMemo(() => resolvePostAuthRedirect(searchParams.get("next")), [searchParams]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current !== null) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -28,7 +38,7 @@ export default function LoginPage() {
     setError("");
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    redirectTimerRef.current = setTimeout(() => {
       setMockAuthCookie();
       router.push(nextPath);
       router.refresh();
@@ -81,14 +91,22 @@ export default function LoginPage() {
           </div>
           <input
             id="password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••••••"
             className="w-full rounded-lg border border-[#9eaec7]/20 bg-white py-4 pl-12 pr-12 text-[#203044] outline-none transition placeholder:text-[#68788f]/60 focus:border-[#b60055] focus:ring-2 focus:ring-[#b60055]/10"
           />
-          <button type="button" className="absolute inset-y-0 right-4 flex items-center text-[#68788f] hover:text-[#203044]" aria-label="Toggle password visibility">
-            <span className="material-symbols-outlined text-[20px]">visibility</span>
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label="Toggle password visibility"
+            aria-pressed={showPassword}
+            className="absolute inset-y-0 right-4 flex items-center text-[#68788f] hover:text-[#203044]"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {showPassword ? "visibility_off" : "visibility"}
+            </span>
           </button>
         </div>
       </div>
