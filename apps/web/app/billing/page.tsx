@@ -12,10 +12,11 @@ import {
   MotionStaggerItem,
 } from "../_components/motion/motion-primitives";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { getDefaultBillingState, loadBillingState, saveBillingState, type BillingPlanName } from "../_lib/mock-billing";
+import { getBillingStatus, subscribeToPlan } from "../_lib/api/billing";
+import { mapBackendPlanToUiPlan, toSubscribableBackendPlan, type UiBillingPlanName } from "../_lib/billing/plan-mapper";
 
 type Plan = {
-  name: BillingPlanName;
+  name: UiBillingPlanName;
   badge: string;
   price: string;
   period: string;
@@ -27,7 +28,7 @@ type Plan = {
 
 const plans: Plan[] = [
   {
-    name: "Hobby" as const,
+    name: "Hobby",
     badge: "Sandbox",
     price: "$0",
     period: "/month",
@@ -37,7 +38,7 @@ const plans: Plan[] = [
     unavailable: [2],
   },
   {
-    name: "Pro" as const,
+    name: "Pro",
     badge: "Growth",
     price: "$29",
     period: "/month",
@@ -47,7 +48,7 @@ const plans: Plan[] = [
     unavailable: [],
   },
   {
-    name: "Enterprise" as const,
+    name: "Enterprise",
     badge: "Scale",
     price: "Custom",
     period: "",
@@ -67,29 +68,75 @@ const paymentMethods = ["Visa ending in 4421", "Mastercard ending in 1102", "Ame
 
 export default function BillingPage() {
   const shouldReduceMotion = useReducedMotion();
-  const [currentPlan, setCurrentPlan] = useState<BillingPlanName>("Hobby");
-  const [paymentMethod, setPaymentMethod] = useState(getDefaultBillingState().paymentMethod);
+  const [currentPlan, setCurrentPlan] = useState<UiBillingPlanName>("Hobby");
+  const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [subscribingPlan, setSubscribingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
 
   useEffect(() => {
-    const state = loadBillingState();
-    setCurrentPlan(state.currentPlan);
-    setPaymentMethod(state.paymentMethod);
+    let isMounted = true;
+
+    const loadStatus = async () => {
+      setStatusMessage("Loading subscription status...");
+      setErrorMessage("");
+
+      try {
+        const status = await getBillingStatus();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setCurrentPlan(mapBackendPlanToUiPlan(status.plan_name));
+        setStatusMessage(status.status === "pending_payment" ? "Payment is pending. Complete checkout to activate your plan." : "");
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setStatusMessage("");
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load billing status.");
+      }
+    };
+
+    void loadStatus();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const updateState = (nextPlan: BillingPlanName, nextMethod: string) => {
-    saveBillingState({ currentPlan: nextPlan, paymentMethod: nextMethod });
-    setCurrentPlan(nextPlan);
-    setPaymentMethod(nextMethod);
-  };
+  const handleSelectPlan = async (plan: UiBillingPlanName) => {
+    if (plan === currentPlan) {
+      return;
+    }
 
-  const handleSelectPlan = (plan: BillingPlanName) => {
-    updateState(plan, paymentMethod);
+    setErrorMessage("");
+
+    if (plan === "Hobby") {
+      setStatusMessage("Downgrades to Hobby are currently handled by support.");
+      return;
+    }
+
+    setSubscribingPlan(plan);
+
+    try {
+      const response = await subscribeToPlan(toSubscribableBackendPlan(plan));
+      setCurrentPlan(plan);
+      window.open(response.invoice_url, "_blank", "noopener,noreferrer");
+      setStatusMessage("Checkout opened in a new tab.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start checkout.");
+    } finally {
+      setSubscribingPlan(null);
+    }
   };
 
   const handleSelectPaymentMethod = (method: string) => {
-    updateState(currentPlan, method);
+    setPaymentMethod(method);
     setShowPaymentOptions(false);
   };
 
@@ -107,14 +154,27 @@ export default function BillingPage() {
         <h2 className="mb-3 text-3xl font-extrabold leading-tight tracking-tight text-[#203044] sm:mb-4 sm:text-4xl md:text-5xl md:leading-none">
           with surgical precision. <span className="text-[#68788f]">Choose your tier.</span>
         </h2>
-        <p className="mb-10 text-sm font-semibold text-[#4d5d73] sm:mb-12 md:mb-14" aria-live="polite">
+        <p className="mb-2 text-sm font-semibold text-[#4d5d73]" aria-live="polite">
           Current plan: <span className="text-[#b60055]">{currentPlan}</span>
         </p>
+        {statusMessage ? (
+          <p className="mb-2 rounded-lg border border-[#9eaec7]/20 bg-white px-3 py-2 text-xs font-semibold text-[#4d5d73]" role="status">
+            {statusMessage}
+          </p>
+        ) : null}
+        {errorMessage ? (
+          <p className="mb-10 rounded-lg border border-[#b60055]/15 bg-[#b60055]/5 px-3 py-2 text-xs font-semibold text-[#b60055] sm:mb-12 md:mb-14" role="alert">
+            {errorMessage}
+          </p>
+        ) : (
+          <div className="mb-10 sm:mb-12 md:mb-14" />
+        )}
       </MotionSection>
 
       <MotionStaggerContainer className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:gap-6 xl:grid-cols-3 xl:gap-8">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.name;
+          const isSubmitting = subscribingPlan === plan.name;
 
           return (
             <MotionStaggerItem key={plan.name} className={plan.featured ? "md:col-span-2 xl:col-span-1" : undefined}>
@@ -167,8 +227,9 @@ export default function BillingPage() {
 
                 <MotionButton
                   type="button"
-                  onClick={() => handleSelectPlan(plan.name)}
-                  className={`maas-touch-target mt-8 w-full rounded-xl px-5 py-3 font-bold transition sm:mt-10 md:mt-12 ${
+                  onClick={() => void handleSelectPlan(plan.name)}
+                  disabled={isSubmitting}
+                  className={`maas-touch-target mt-8 w-full rounded-xl px-5 py-3 font-bold transition disabled:opacity-70 sm:mt-10 md:mt-12 ${
                     isCurrent
                       ? "border-2 border-[#b60055] bg-white text-[#b60055]"
                       : plan.featured
@@ -178,7 +239,7 @@ export default function BillingPage() {
                           : "bg-[#d2e4ff] text-[#203044]"
                   }`}
                 >
-                  {isCurrent ? "Current Plan" : plan.cta}
+                  {isCurrent ? "Current Plan" : isSubmitting ? "Opening Checkout..." : plan.cta}
                 </MotionButton>
               </MotionCard>
             </MotionStaggerItem>
