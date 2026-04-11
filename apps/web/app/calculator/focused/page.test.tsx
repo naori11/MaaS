@@ -3,7 +3,34 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CalculatorFocusedPage from "./page";
 
-const fetchMock = vi.fn();
+const { fetchMock, push, refresh, getAuthTokenFromBrowserSession, getAuthTokenTypeFromBrowserSession, clearAuthSession } = vi.hoisted(
+  () => ({
+    fetchMock: vi.fn(),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    getAuthTokenFromBrowserSession: vi.fn(() => "jwt-token"),
+    getAuthTokenTypeFromBrowserSession: vi.fn(() => "Bearer"),
+    clearAuthSession: vi.fn(),
+  }),
+);
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push,
+    refresh,
+  }),
+}));
+
+vi.mock("../../_lib/mock-auth", async () => {
+  const actual = await vi.importActual<typeof import("../../_lib/mock-auth")>("../../_lib/mock-auth");
+
+  return {
+    ...actual,
+    getAuthTokenFromBrowserSession,
+    getAuthTokenTypeFromBrowserSession,
+    clearAuthSession,
+  };
+});
 
 const makeSuccessResponse = (result: number, operation: "addition" | "subtraction" | "multiplication" | "division") =>
   new Response(
@@ -31,6 +58,8 @@ describe("Calculator focused page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
+    getAuthTokenFromBrowserSession.mockReturnValue("jwt-token");
+    getAuthTokenTypeFromBrowserSession.mockReturnValue("Bearer");
   });
 
   afterEach(() => {
@@ -48,7 +77,7 @@ describe("Calculator focused page", () => {
   it.each([
     {
       sequence: ["8", "+", "2", "="],
-      endpoint: "/api/v1/calculate/add",
+      endpoint: "http://localhost:4000/api/v1/calculate/add",
       result: 10,
       operation: "addition" as const,
       operandA: 8,
@@ -56,7 +85,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["9", "−", "4", "="],
-      endpoint: "/api/v1/calculate/subtract",
+      endpoint: "http://localhost:4000/api/v1/calculate/subtract",
       result: 5,
       operation: "subtraction" as const,
       operandA: 9,
@@ -64,7 +93,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["7", "×", "3", "="],
-      endpoint: "/api/v1/calculate/multiply",
+      endpoint: "http://localhost:4000/api/v1/calculate/multiply",
       result: 21,
       operation: "multiplication" as const,
       operandA: 7,
@@ -72,7 +101,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["8", "÷", "2", "="],
-      endpoint: "/api/v1/calculate/divide",
+      endpoint: "http://localhost:4000/api/v1/calculate/divide",
       result: 4,
       operation: "division" as const,
       operandA: 8,
@@ -93,7 +122,10 @@ describe("Calculator focused page", () => {
       endpoint,
       expect.objectContaining({
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer jwt-token",
+        },
         body: JSON.stringify({ operand_a: operandA, operand_b: operandB }),
       }),
     );
@@ -126,6 +158,42 @@ describe("Calculator focused page", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Gateway unavailable");
       expect(screen.getByLabelText("Calculator result")).toHaveTextContent("0");
+    });
+  });
+
+  it("redirects to login when token is missing", async () => {
+    getAuthTokenFromBrowserSession.mockReturnValueOnce(null);
+
+    render(<CalculatorFocusedPage />);
+
+    pressKeys(["8", "×", "2", "="]);
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith("/login?next=%2Fcalculator%2Ffocused");
+      expect(refresh).toHaveBeenCalled();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears session and redirects to login on 401", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "Invalid credentials" } }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    );
+
+    render(<CalculatorFocusedPage />);
+
+    pressKeys(["8", "×", "2", "="]);
+
+    await waitFor(() => {
+      expect(clearAuthSession).toHaveBeenCalled();
+      expect(push).toHaveBeenCalledWith("/login?next=%2Fcalculator%2Ffocused");
+      expect(refresh).toHaveBeenCalled();
     });
   });
 });

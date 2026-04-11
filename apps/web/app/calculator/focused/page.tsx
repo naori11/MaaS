@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MotionButton, MotionSection } from "../../_components/motion/motion-primitives";
-import { calculateGatewayOperation, toCalculatorErrorMessage } from "../../_lib/api/math";
+import { calculateGatewayOperation, isAuthGatewayMathError, toCalculatorErrorMessage } from "../../_lib/api/math";
 import {
   applyCalculatorKey,
   applyEvaluationFailure,
@@ -24,6 +25,7 @@ const isAction = (value: CalculatorKey) => ["÷", "×", "−", "+", "="].include
 export default function CalculatorFocusedPage() {
   const [calculatorState, setCalculatorState] = useState(createInitialCalculatorState);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const router = useRouter();
 
   const handleKeyPress = async (key: CalculatorKey) => {
     if (isEvaluating) {
@@ -48,6 +50,12 @@ export default function CalculatorFocusedPage() {
 
       setCalculatorState((currentState) => applyEvaluationSuccess(currentState, transition.command, response.result));
     } catch (error) {
+      if (isAuthGatewayMathError(error)) {
+        router.push(`/login?next=${encodeURIComponent("/calculator/focused")}`);
+        router.refresh();
+        return;
+      }
+
       setCalculatorState(applyEvaluationFailure(transition.command, toCalculatorErrorMessage(error)));
     } finally {
       setIsEvaluating(false);
