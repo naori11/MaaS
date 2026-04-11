@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
+import { resolvePostAuthRedirect } from "../_lib/mock-auth";
+import { loginWithPassword } from "../_lib/api/auth-login";
+import { setAuthSession } from "../_lib/auth/session";
 
 function LoginPageContent() {
   const [email, setEmail] = useState("");
@@ -16,22 +18,16 @@ function LoginPageContent() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextPath = useMemo(() => resolvePostAuthRedirect(searchParams.get("next")), [searchParams]);
 
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current !== null) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       setError("Node Identity and Access Cipher are required.");
       return;
     }
@@ -39,11 +35,26 @@ function LoginPageContent() {
     setError("");
     setIsSubmitting(true);
 
-    redirectTimerRef.current = setTimeout(() => {
-      setMockAuthCookie();
+    try {
+      const response = await loginWithPassword({
+        email: trimmedEmail,
+        password: trimmedPassword,
+      });
+
+      setAuthSession({
+        accessToken: response.access_token,
+        tokenType: response.token_type,
+        expiresInSeconds: response.expires_in,
+      });
+
       router.push(nextPath);
       router.refresh();
-    }, 250);
+    } catch (submitError) {
+      const message = submitError instanceof Error && submitError.message.trim() ? submitError.message : "Unable to initiate session.";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
