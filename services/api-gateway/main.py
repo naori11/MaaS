@@ -54,6 +54,7 @@ _ROUTE_MAP = {
     "/api/v1/calculate/subtract": f"{MATH_SUBTRACT_SERVICE_URL}/api/v1/calculate/subtract",
     "/api/v1/calculate/multiply": f"{MATH_MULTIPLY_SERVICE_URL}/api/v1/calculate/multiply",
     "/api/v1/calculate/divide": f"{MATH_DIVIDE_SERVICE_URL}/api/v1/calculate/divide",
+    "/api/v1/ledger/transactions": f"{LEDGER_SERVICE_URL}/api/v1/ledger/transactions",
 }
 
 _STATUS_CODE_TO_ERROR_CODE = {
@@ -306,11 +307,14 @@ async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
     if authorization:
         upstream_headers["Authorization"] = authorization
 
+    upstream_query = request.url.query
+    resolved_upstream_url = upstream_url if not upstream_query else f"{upstream_url}?{upstream_query}"
+
     timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            upstream_response = await client.get(upstream_url, headers=upstream_headers)
+            upstream_response = await client.get(resolved_upstream_url, headers=upstream_headers)
     except httpx.RequestError as exc:
         raise HTTPException(status_code=500, detail="Upstream service unavailable") from exc
 
@@ -350,6 +354,11 @@ async def login(request: Request) -> JSONResponse:
 @app.get("/api/v1/billing/status")
 async def billing_status(request: Request) -> JSONResponse:
     return await _proxy_get(request, _ROUTE_MAP["/api/v1/billing/status"])
+
+
+@app.get("/api/v1/ledger/transactions")
+async def ledger_transactions(request: Request) -> JSONResponse:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/ledger/transactions"])
 
 
 @app.post("/api/v1/billing/subscribe")
