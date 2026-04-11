@@ -20,7 +20,7 @@ describe("History page", () => {
   it("renders history heading and key controls", () => {
     render(<HistoryPage />);
 
-    expect(screen.getByRole("heading", { name: "Calculation History" })).toBeInTheDocument();
+    expect(screen.getByText(/enterprise logs/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
     expect(screen.getByText("#TX-94281-MA")).toBeInTheDocument();
   });

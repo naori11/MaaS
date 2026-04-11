@@ -11,7 +11,7 @@ describe("Billing page", () => {
   it("renders pricing tiers and upgrade action", () => {
     render(<BillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Scale your logic" })).toBeInTheDocument();
+    expect(screen.getByText(/subscription management/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pro" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upgrade Now" })).toBeInTheDocument();
   });

@@ -11,7 +11,6 @@ describe("Calculator focused page", () => {
   it("renders calculator display and primary controls", () => {
     render(<CalculatorFocusedPage />);
 
-    expect(screen.getByRole("heading", { name: "Calculator View" })).toBeInTheDocument();
     expect(screen.getByText("Current Expression")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "=" })).toBeInTheDocument();
   });

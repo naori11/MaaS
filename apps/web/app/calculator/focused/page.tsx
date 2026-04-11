@@ -1,4 +1,6 @@
-import { DashboardShell } from "../../_components/dashboard-shell";
+"use client";
+
+import { MotionButton, MotionSection } from "../../_components/motion/motion-primitives";
 
 const rows = [
   ["AC", "+/-", "%", "÷"],
@@ -12,12 +14,8 @@ const isAction = (value: string) => ["÷", "×", "−", "+", "="].includes(value
 
 export default function CalculatorFocusedPage() {
   return (
-    <DashboardShell
-      activeTab="calculator"
-      title="Calculator View"
-      subtitle="Focused execution mode for high-precision arithmetic operations."
-    >
-      <section className="relative mx-auto w-full max-w-lg">
+    <>
+      <MotionSection className="relative mx-auto w-full max-w-lg">
         <div className="maas-enterprise-gradient absolute -inset-4 rounded-full opacity-10 blur-3xl" />
 
         <article className="maas-glass-panel relative overflow-hidden rounded-[2.5rem] border border-white/40 p-8 shadow-2xl">
@@ -44,7 +42,7 @@ export default function CalculatorFocusedPage() {
                 const utility = ["AC", "+/-", "%"].includes(item);
 
                 return (
-                  <button
+                  <MotionButton
                     key={`${rowIndex}-${item}`}
                     type="button"
                     className={`h-16 rounded-2xl font-bold transition active:scale-95 ${wide ? "col-span-2 px-8 text-left" : ""} ${
@@ -54,10 +52,9 @@ export default function CalculatorFocusedPage() {
                           ? "bg-[#c9deff] text-lg text-[#203044]"
                           : "bg-white text-xl text-[#203044]"
                     }`}
-                    style={wide && colIndex === 0 ? { textAlign: "left" } : undefined}
                   >
-                    {item}
-                  </button>
+                    <span style={wide && colIndex === 0 ? { textAlign: "left", display: "inline-block", width: "100%" } : undefined}>{item}</span>
+                  </MotionButton>
                 );
               }),
             )}
@@ -67,11 +64,11 @@ export default function CalculatorFocusedPage() {
             <p className="text-[10px] font-bold uppercase tracking-[0.4em]">Proprietary Math Engine</p>
           </div>
         </article>
-      </section>
+      </MotionSection>
 
       <div className="pointer-events-none fixed bottom-0 right-0 hidden select-none p-12 opacity-5 xl:block">
         <span className="text-[20rem] font-black leading-none tracking-tight">Σ</span>
       </div>
-    </DashboardShell>
+    </>
   );
 }
