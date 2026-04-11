@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { MotionButton, MotionCard } from "../_components/motion/motion-primitives";
+import { fetchLedgerTransactions } from "../_lib/api/ledger";
+import { toHistoryRows } from "../_lib/history/adapter";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { getSeedHistoryRows, loadHistoryRows, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
+import { getSeedHistoryRows, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
 
 type FilterMode = "all" | "success" | "errors";
 
@@ -17,7 +19,26 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setRows(loadHistoryRows());
+    let isActive = true;
+
+    void (async () => {
+      try {
+        const response = await fetchLedgerTransactions(100);
+        if (!isActive) {
+          return;
+        }
+        setRows(toHistoryRows(response.items));
+      } catch {
+        if (!isActive) {
+          return;
+        }
+        setRows([]);
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   const filteredRows = useMemo(() => {
