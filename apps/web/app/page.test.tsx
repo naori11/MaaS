@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AUTH_EXPIRES_AT_COOKIE, AUTH_TOKEN_COOKIE } from "./_lib/mock-auth";
 
 const redirect = vi.fn();
 const cookies = vi.fn();
@@ -29,7 +30,17 @@ describe("Home page", () => {
 
   it("redirects authenticated users to calculator", async () => {
     cookies.mockResolvedValue({
-      get: vi.fn().mockReturnValue({ value: "1" }),
+      get: vi.fn((name: string) => {
+        if (name === AUTH_TOKEN_COOKIE) {
+          return { value: "jwt-token" };
+        }
+
+        if (name === AUTH_EXPIRES_AT_COOKIE) {
+          return { value: String(Date.now() + 60_000) };
+        }
+
+        return undefined;
+      }),
     });
 
     const { default: Home } = await import("./page");

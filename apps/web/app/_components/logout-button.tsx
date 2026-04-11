@@ -1,7 +1,7 @@
 "use client";
 
 import { MotionButton } from "./motion/motion-primitives";
-import { clearAuthSession } from "../_lib/auth/session";
+import { clearAuthSession } from "../_lib/mock-auth";
 
 export function LogoutButton() {
   const handleLogout = () => {

@@ -5,9 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect } from "../_lib/mock-auth";
-import { loginWithPassword } from "../_lib/api/auth-login";
-import { setAuthSession } from "../_lib/auth/session";
+import { resolvePostAuthRedirect, setAuthSession } from "../_lib/mock-auth";
 
 function LoginPageContent() {
   const [email, setEmail] = useState("");
@@ -36,22 +34,37 @@ function LoginPageContent() {
     setIsSubmitting(true);
 
     try {
-      const response = await loginWithPassword({
-        email: trimmedEmail,
-        password: trimmedPassword,
+      const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
+      const response = await fetch(`${gatewayBaseUrl}/api/v1/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: trimmedPassword,
+        }),
       });
 
+      const payload = (await response.json()) as
+        | { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } }
+        | undefined;
+
+      if (!response.ok || !payload?.access_token) {
+        setError(payload?.error?.message ?? "Invalid credentials.");
+        return;
+      }
+
       setAuthSession({
-        accessToken: response.access_token,
-        tokenType: response.token_type,
-        expiresInSeconds: response.expires_in,
+        accessToken: payload.access_token,
+        tokenType: payload.token_type ?? "bearer",
+        expiresInSeconds: payload.expires_in ?? 3600,
       });
 
       router.push(nextPath);
       router.refresh();
-    } catch (submitError) {
-      const message = submitError instanceof Error && submitError.message.trim() ? submitError.message : "Unable to initiate session.";
-      setError(message);
+    } catch {
+      setError("Unable to reach authentication gateway.");
     } finally {
       setIsSubmitting(false);
     }
