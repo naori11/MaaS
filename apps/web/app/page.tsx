@@ -1,10 +1,10 @@
-export default function Home() {
-  return (
-    <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-semibold">Math-as-a-Service</h1>
-      <p className="mt-2 text-sm text-gray-600">
-        Next.js + Tailwind frontend initialized.
-      </p>
-    </main>
-  );
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { MOCK_AUTH_COOKIE } from "./_lib/mock-auth";
+
+export default async function Home() {
+  const cookieStore = await cookies();
+  const isAuthenticated = Boolean(cookieStore.get(MOCK_AUTH_COOKIE)?.value);
+
+  redirect(isAuthenticated ? "/calculator/focused" : "/login");
 }
