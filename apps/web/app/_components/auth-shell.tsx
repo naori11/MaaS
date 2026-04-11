@@ -1,5 +1,8 @@
+"use client";
+
 import type { FormEvent, ReactNode } from "react";
 import Link from "next/link";
+import { MotionButton, MotionSection } from "./motion/motion-primitives";
 
 type AuthShellProps = {
   title: string;
@@ -54,7 +57,7 @@ export function AuthShell({
         <div className="pointer-events-none absolute -right-8 -top-14 h-80 w-80 rounded-full bg-[#dce9ff] opacity-70 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-14 -left-8 h-72 w-72 rounded-full bg-[#ffc69c] opacity-25 blur-3xl" />
 
-        <section className="relative z-10 w-full max-w-[480px]">
+        <MotionSection className="relative z-10 w-full max-w-[480px]">
           <div className="rounded-2xl border border-[#9eaec7]/15 bg-white p-10 shadow-[0px_20px_40px_rgba(32,48,68,0.06)] md:p-12">
             <div className="mb-10 text-center md:text-left">
               <h1 className="text-4xl font-extrabold tracking-tight">{title}</h1>
@@ -70,13 +73,13 @@ export function AuthShell({
                 </p>
               ) : null}
 
-              <button
+              <MotionButton
                 type="submit"
                 disabled={isSubmitting}
                 className="maas-enterprise-gradient w-full rounded-xl py-4 font-bold tracking-wide text-white shadow-lg shadow-[#b60055]/20 transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? "Processing..." : actionLabel}
-              </button>
+              </MotionButton>
             </form>
 
             <div className="mt-10 border-t border-[#9eaec7]/15 pt-8 text-center">
@@ -99,7 +102,7 @@ export function AuthShell({
               Status: Online
             </div>
           </div>
-        </section>
+        </MotionSection>
       </main>
 
       <footer className="border-t border-[#9eaec7]/15 bg-[#f4f6ff] py-10">
