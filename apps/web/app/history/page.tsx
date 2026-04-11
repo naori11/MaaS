@@ -23,7 +23,7 @@ export default function HistoryPage() {
 
     void (async () => {
       try {
-        const response = await fetchLedgerTransactions(200);
+        const response = await fetchLedgerTransactions(100);
         if (!isActive) {
           return;
         }
@@ -32,7 +32,7 @@ export default function HistoryPage() {
         if (!isActive) {
           return;
         }
-        setRows(getSeedHistoryRows());
+        setRows([]);
       }
     })();
 

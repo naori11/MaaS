@@ -18,6 +18,8 @@ const ledgerItems = [
 describe("History page", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    document.cookie = "maas_auth_token=test-token; path=/";
+    document.cookie = "maas_auth_token_type=bearer; path=/";
     Object.defineProperty(URL, "createObjectURL", {
       writable: true,
       value: vi.fn(() => "blob:mock"),
@@ -48,9 +50,10 @@ describe("History page", () => {
       expect(screen.queryByText("#TX-94281-MA")).not.toBeInTheDocument();
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/ledger/transactions?limit=200", {
+    expect(globalThis.fetch).toHaveBeenCalledWith("http://localhost:4000/api/v1/ledger/transactions?limit=100", {
       method: "GET",
       credentials: "include",
+      headers: { Authorization: "Bearer test-token" },
     });
   });
 
