@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -273,10 +274,10 @@ export default function BillingPage() {
               <p className="mb-5 text-sm text-[#4d5d73] sm:mb-6">
                 Our sales team can tailor a plan that fits your exact computational throughput needs.
               </p>
-              <a href="/signup" className="maas-touch-target group inline-flex items-center gap-2 text-sm font-bold text-[#b60055]">
+              <Link href="/signup" className="maas-touch-target group inline-flex items-center gap-2 text-sm font-bold text-[#b60055]">
                 Talk to an expert
                 <span className="material-symbols-outlined text-sm transition group-hover:translate-x-1">arrow_forward</span>
-              </a>
+              </Link>
             </article>
           </MotionCard>
         </div>
