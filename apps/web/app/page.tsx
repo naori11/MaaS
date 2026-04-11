@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { MOCK_AUTH_COOKIE } from "./_lib/mock-auth";
+import { readAuthTokenFromCookieStore } from "./_lib/auth/cookies";
 
 export default async function Home() {
   const cookieStore = await cookies();
-  const isAuthenticated = Boolean(cookieStore.get(MOCK_AUTH_COOKIE)?.value);
+  const isAuthenticated = Boolean(readAuthTokenFromCookieStore(cookieStore));
 
   redirect(isAuthenticated ? "/calculator/focused" : "/login");
 }
