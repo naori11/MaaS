@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "../_components/auth-shell";
 import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
 
-export default function SignupPage() {
+function SignupPageContent() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -89,5 +89,13 @@ export default function SignupPage() {
         />
       </div>
     </AuthShell>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageContent />
+    </Suspense>
   );
 }

@@ -1,11 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { DashboardShell } from "../_components/dashboard-shell";
 import { getDefaultBillingState, loadBillingState, saveBillingState, type BillingPlanName } from "../_lib/mock-billing";
 
-const plans = [
+type Plan = {
+  name: BillingPlanName;
+  badge: string;
+  price: string;
+  period: string;
+  cta: string;
+  featured: boolean;
+  features: string[];
+  unavailable: number[];
+};
+
+const plans: Plan[] = [
   {
     name: "Hobby" as const,
     badge: "Sandbox",
@@ -242,10 +252,10 @@ export default function BillingPage() {
             <p className="mb-6 text-sm text-[#4d5d73]">
               Our sales team can tailor a plan that fits your exact computational throughput needs.
             </p>
-            <Link href="/signup" className="group flex items-center gap-2 text-sm font-bold text-[#b60055]">
+            <a href="/signup" className="group flex items-center gap-2 text-sm font-bold text-[#b60055]">
               Talk to an expert
               <span className="material-symbols-outlined text-sm transition group-hover:translate-x-1">arrow_forward</span>
-            </Link>
+            </a>
           </article>
         </div>
       </section>
