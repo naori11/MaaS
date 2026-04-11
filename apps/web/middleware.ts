@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { MOCK_AUTH_COOKIE } from "./app/_lib/mock-auth";
+import { readAuthTokenFromRequestCookies } from "./app/_lib/auth/cookies";
 
 const AUTH_PATHS = new Set(["/login", "/signup"]);
 
@@ -9,7 +9,7 @@ function isProtectedPath(pathname: string) {
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const isAuthenticated = Boolean(request.cookies.get(MOCK_AUTH_COOKIE)?.value);
+  const isAuthenticated = Boolean(readAuthTokenFromRequestCookies(request));
 
   if (!isAuthenticated && isProtectedPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
