@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { MotionButton, MotionCard, MotionPresenceBlock, MotionSection, MotionStaggerContainer, MotionStaggerItem } from "../_components/motion/motion-primitives";
+import {
+  MotionButton,
+  MotionCard,
+  MotionPresenceBlock,
+  MotionSection,
+  MotionStaggerContainer,
+  MotionStaggerItem,
+} from "../_components/motion/motion-primitives";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
 import { getDefaultBillingState, loadBillingState, saveBillingState, type BillingPlanName } from "../_lib/mock-billing";
 
@@ -95,30 +102,30 @@ export default function BillingPage() {
   return (
     <>
       <MotionSection>
-        <p className="mb-4 text-xs font-bold uppercase tracking-[0.15em] text-[#b60055]">Subscription Management</p>
-        <h2 className="mb-4 text-5xl font-extrabold leading-none tracking-tight text-[#203044]">
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.15em] text-[#b60055] sm:mb-4">Subscription Management</p>
+        <h2 className="mb-3 text-3xl font-extrabold leading-tight tracking-tight text-[#203044] sm:mb-4 sm:text-4xl md:text-5xl md:leading-none">
           with surgical precision. <span className="text-[#68788f]">Choose your tier.</span>
         </h2>
-        <p className="mb-14 text-sm font-semibold text-[#4d5d73]" aria-live="polite">
+        <p className="mb-10 text-sm font-semibold text-[#4d5d73] sm:mb-12 md:mb-14" aria-live="polite">
           Current plan: <span className="text-[#b60055]">{currentPlan}</span>
         </p>
       </MotionSection>
 
-      <MotionStaggerContainer className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      <MotionStaggerContainer className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:gap-6 xl:grid-cols-3 xl:gap-8">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.name;
 
           return (
-            <MotionStaggerItem key={plan.name}>
+            <MotionStaggerItem key={plan.name} className={plan.featured ? "md:col-span-2 xl:col-span-1" : undefined}>
               <MotionCard
-                className={`flex h-full flex-col justify-between rounded-3xl p-8 ${
+                className={`flex h-full flex-col justify-between rounded-3xl p-5 sm:p-6 md:p-7 lg:p-8 ${
                   plan.featured
                     ? "relative overflow-hidden border-2 border-[#b60055]/10 bg-white shadow-[0px_20px_40px_rgba(32,48,68,0.06)]"
                     : "bg-[#eaf1ff]"
                 }`}
               >
                 {plan.featured ? (
-                  <div className="absolute right-0 top-0 p-4">
+                  <div className="absolute right-0 top-0 p-3 sm:p-4">
                     <span className="maas-enterprise-gradient rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white">
                       Most Popular
                     </span>
@@ -133,13 +140,13 @@ export default function BillingPage() {
                   >
                     {plan.badge}
                   </span>
-                  <h3 className="mt-4 text-3xl font-bold">{plan.name}</h3>
+                  <h3 className="mt-4 text-2xl font-bold sm:text-3xl">{plan.name}</h3>
                   <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-4xl font-black">{plan.price}</span>
+                    <span className="text-3xl font-black sm:text-4xl">{plan.price}</span>
                     {plan.period ? <span className="text-sm text-[#4d5d73]">{plan.period}</span> : null}
                   </div>
 
-                  <ul className="mt-8 space-y-6">
+                  <ul className="mt-6 space-y-4 sm:mt-8 sm:space-y-5 md:space-y-6">
                     {plan.features.map((feature, index) => {
                       const unavailable = plan.unavailable.includes(index);
                       return (
@@ -160,7 +167,7 @@ export default function BillingPage() {
                 <MotionButton
                   type="button"
                   onClick={() => handleSelectPlan(plan.name)}
-                  className={`mt-12 w-full rounded-xl px-6 py-4 font-bold transition ${
+                  className={`maas-touch-target mt-8 w-full rounded-xl px-5 py-3 font-bold transition sm:mt-10 md:mt-12 ${
                     isCurrent
                       ? "border-2 border-[#b60055] bg-white text-[#b60055]"
                       : plan.featured
@@ -178,23 +185,23 @@ export default function BillingPage() {
         })}
       </MotionStaggerContainer>
 
-      <section className="mt-24 grid grid-cols-1 items-center gap-12 md:grid-cols-12">
+      <section className="mt-12 grid grid-cols-1 items-start gap-6 md:mt-16 md:grid-cols-12 md:gap-8 lg:mt-24 lg:gap-12">
         <MotionCard className="md:col-span-7">
-          <article className="rounded-3xl border border-[#9eaec7]/10 bg-[#eaf1ff]/50 p-10">
-            <h4 className="mb-6 text-2xl font-bold">Payment History</h4>
+          <article className="rounded-3xl border border-[#9eaec7]/10 bg-[#eaf1ff]/50 p-5 sm:p-6 md:p-8 lg:p-10">
+            <h4 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">Payment History</h4>
             {downloadMessage ? (
               <p className="mb-4 rounded-lg border border-[#b60055]/15 bg-[#b60055]/5 px-3 py-2 text-xs font-semibold text-[#b60055]" role="status">
                 {downloadMessage}
               </p>
             ) : null}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {[
                 { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "$29.00", strong: true },
                 { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "$29.00", strong: false },
               ].map((invoice, index) => (
                 <motion.div
                   key={invoice.id}
-                  className={`flex items-center justify-between rounded-xl bg-white p-4 ${invoice.strong ? "" : "opacity-70"}`}
+                  className={`flex flex-col gap-3 rounded-xl bg-white p-4 sm:flex-row sm:items-center sm:justify-between ${invoice.strong ? "" : "opacity-70"}`}
                   initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{
@@ -203,8 +210,8 @@ export default function BillingPage() {
                     delay: shouldReduceMotion ? 0 : index * 0.04,
                   }}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#c8d8f3]">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#c8d8f3]">
                       <span className="material-symbols-outlined text-[#3c4c61]">receipt</span>
                     </div>
                     <div>
@@ -212,9 +219,9 @@ export default function BillingPage() {
                       <p className="text-[10px] font-medium uppercase text-[#68788f]">{invoice.date}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
+                  <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                     <p className="text-sm font-bold">{invoice.amount}</p>
-                    <MotionButton type="button" className="text-xs font-bold text-[#b60055] hover:underline" onClick={() => handleDownloadInvoice(invoice.id)}>
+                    <MotionButton type="button" className="maas-touch-target text-xs font-bold text-[#b60055] hover:underline" onClick={() => handleDownloadInvoice(invoice.id)}>
                       Download
                     </MotionButton>
                   </div>
@@ -224,21 +231,21 @@ export default function BillingPage() {
           </article>
         </MotionCard>
 
-        <div className="space-y-8 md:col-span-5">
+        <div className="space-y-6 md:col-span-5 md:space-y-8">
           <MotionCard>
-            <article className="rounded-3xl border border-[#9eaec7]/10 bg-white p-8 shadow-sm">
-              <div className="mb-6 flex items-center gap-4">
-                <div className="maas-enterprise-gradient flex h-12 w-12 items-center justify-center rounded-xl text-white">
+            <article className="rounded-3xl border border-[#9eaec7]/10 bg-white p-5 shadow-sm sm:p-6 md:p-8">
+              <div className="mb-5 flex items-center gap-3 sm:mb-6 sm:gap-4">
+                <div className="maas-enterprise-gradient flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white">
                   <span className="material-symbols-outlined">credit_score</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h4 className="font-bold">Primary Method</h4>
-                  <p className="text-sm text-[#4d5d73]">{paymentMethod}</p>
+                  <p className="truncate text-sm text-[#4d5d73]">{paymentMethod}</p>
                 </div>
               </div>
               <MotionButton
                 type="button"
-                className="w-full rounded-lg border-2 border-[#9eaec7]/20 py-3 text-sm font-bold"
+                className="maas-touch-target w-full rounded-lg border-2 border-[#9eaec7]/20 px-4 py-3 text-sm font-bold"
                 onClick={() => setShowPaymentOptions((value) => !value)}
               >
                 {showPaymentOptions ? "Hide Payment Methods" : "Update Payment Method"}
@@ -250,7 +257,7 @@ export default function BillingPage() {
                       key={method}
                       type="button"
                       onClick={() => handleSelectPaymentMethod(method)}
-                      className="w-full rounded-lg bg-[#eaf1ff] px-3 py-2 text-left text-xs font-semibold text-[#203044]"
+                      className="maas-touch-target w-full rounded-lg bg-[#eaf1ff] px-3 py-2 text-left text-xs font-semibold text-[#203044]"
                     >
                       {method}
                     </MotionButton>
@@ -261,12 +268,12 @@ export default function BillingPage() {
           </MotionCard>
 
           <MotionCard>
-            <article className="rounded-3xl border border-[#b60055]/10 bg-[#b60055]/5 p-8">
+            <article className="rounded-3xl border border-[#b60055]/10 bg-[#b60055]/5 p-5 sm:p-6 md:p-8">
               <h4 className="mb-2 font-bold">Need a custom math quota?</h4>
-              <p className="mb-6 text-sm text-[#4d5d73]">
+              <p className="mb-5 text-sm text-[#4d5d73] sm:mb-6">
                 Our sales team can tailor a plan that fits your exact computational throughput needs.
               </p>
-              <a href="/signup" className="group flex items-center gap-2 text-sm font-bold text-[#b60055]">
+              <a href="/signup" className="maas-touch-target group inline-flex items-center gap-2 text-sm font-bold text-[#b60055]">
                 Talk to an expert
                 <span className="material-symbols-outlined text-sm transition group-hover:translate-x-1">arrow_forward</span>
               </a>
