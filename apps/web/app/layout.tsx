@@ -1,4 +1,6 @@
 import "./globals.css";
+import { AppRouteShell } from "./_components/app-route-shell";
+import { MotionProvider } from "./_components/motion/motion-provider";
 
 export default function RootLayout({
   children,
@@ -7,7 +9,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <MotionProvider>
+          <AppRouteShell>{children}</AppRouteShell>
+        </MotionProvider>
+      </body>
     </html>
   );
 }
