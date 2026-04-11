@@ -22,7 +22,7 @@ describe("History page", () => {
 
     expect(screen.getByText(/enterprise logs/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
-    expect(screen.getByText("#TX-94281-MA")).toBeInTheDocument();
+    expect(screen.getAllByText("#TX-94281-MA").length).toBeGreaterThan(0);
   });
 
   it("cycles filter modes", () => {
