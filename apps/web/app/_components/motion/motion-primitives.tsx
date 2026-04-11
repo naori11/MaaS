@@ -117,10 +117,10 @@ export function MotionButton({ children, className, type = "button", onClick, di
       aria-label={ariaLabel}
       aria-pressed={ariaPressed}
       variants={shouldReduceMotion ? undefined : buttonInteractionVariants}
-      initial="rest"
-      whileHover={disabled || shouldReduceMotion ? "rest" : "hover"}
-      whileTap={disabled || shouldReduceMotion ? "rest" : "tap"}
-      animate="rest"
+      initial={shouldReduceMotion ? undefined : "rest"}
+      whileHover={disabled || shouldReduceMotion ? undefined : "hover"}
+      whileTap={disabled || shouldReduceMotion ? undefined : "tap"}
+      animate={shouldReduceMotion ? undefined : "rest"}
       transition={{ duration: MOTION_DURATION.fast }}
     >
       {children}
@@ -140,10 +140,10 @@ export function MotionCard({ children, className }: MotionCardProps) {
     <motion.div
       className={className}
       variants={shouldReduceMotion ? undefined : cardInteractionVariants}
-      initial="rest"
-      whileHover={shouldReduceMotion ? "rest" : "hover"}
-      whileTap={shouldReduceMotion ? "rest" : "tap"}
-      animate="rest"
+      initial={shouldReduceMotion ? undefined : "rest"}
+      whileHover={shouldReduceMotion ? undefined : "hover"}
+      whileTap={shouldReduceMotion ? undefined : "tap"}
+      animate={shouldReduceMotion ? undefined : "rest"}
       transition={{ duration: MOTION_DURATION.fast }}
     >
       {children}

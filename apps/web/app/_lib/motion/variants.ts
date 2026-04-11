@@ -64,6 +64,12 @@ export const staggerContainerVariants: Variants = {
       delayChildren: 0.04,
     },
   },
+  exit: {
+    opacity: 0,
+    transition: {
+      duration: MOTION_DURATION.fast,
+    },
+  },
 };
 
 export const staggerItemVariants: Variants = {
