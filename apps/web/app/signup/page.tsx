@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
+import { register } from "../_lib/api/auth-register";
 import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
 
 function SignupPageContent() {
@@ -18,22 +19,26 @@ function SignupPageContent() {
 
   const nextPath = useMemo(() => resolvePostAuthRedirect(searchParams.get("next")), [searchParams]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setError("Full Name, Node Identity, and Access Cipher are required.");
+    if (!email.trim() || !password.trim()) {
+      setError("Node Identity and Access Cipher are required.");
       return;
     }
 
     setError("");
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
+      await register({ email: email.trim(), password });
       setMockAuthCookie();
       router.push(nextPath);
       router.refresh();
-    }, 250);
+    } catch {
+      setError("Unable to provision account. Please try again.");
+      setIsSubmitting(false);
+    }
   };
 
   return (
