@@ -39,16 +39,17 @@ export default function CalculatorFocusedPage() {
       return;
     }
 
+    const evaluateCommand = transition.command;
     setIsEvaluating(true);
 
     try {
       const response = await calculateGatewayOperation(
-        transition.command.operator,
-        transition.command.operandA,
-        transition.command.operandB,
+        evaluateCommand.operator,
+        evaluateCommand.operandA,
+        evaluateCommand.operandB,
       );
 
-      setCalculatorState((currentState) => applyEvaluationSuccess(currentState, transition.command, response.result));
+      setCalculatorState((currentState) => applyEvaluationSuccess(currentState, evaluateCommand, response.result));
     } catch (error) {
       if (isAuthGatewayMathError(error)) {
         router.push(`/login?next=${encodeURIComponent("/calculator/focused")}`);
@@ -56,7 +57,7 @@ export default function CalculatorFocusedPage() {
         return;
       }
 
-      setCalculatorState(applyEvaluationFailure(transition.command, toCalculatorErrorMessage(error)));
+      setCalculatorState(applyEvaluationFailure(evaluateCommand, toCalculatorErrorMessage(error)));
     } finally {
       setIsEvaluating(false);
     }
