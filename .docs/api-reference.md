@@ -85,6 +85,57 @@ The API Gateway is the unified entry point. In production/Docker, it is reached 
 ### Subscribe/Upgrade
 `POST /api/v1/billing/subscribe`
 - **Internal URL**: `http://billing:8000/api/v1/billing/subscribe`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+- **Request Payload**:
+  ```json
+  {
+    "plan_name": "Standard | Premium"
+  }
+  ```
+- **Response** (200 OK):
+  ```json
+  {
+    "invoice_url": "https://..."
+  }
+  ```
+- **Contract Notes**:
+  - Billing writes/updates subscription as `pending_payment` until webhook confirmation.
+  - `plan_name` outside `Standard|Premium` is rejected.
+
+### Xendit Webhook
+`POST /api/v1/billing/webhook/xendit`
+- **Internal URL**: `http://billing:8000/api/v1/billing/webhook/xendit`
+- **Auth Boundary**:
+  - Gateway bypasses JWT for this route.
+  - Billing enforces `x-callback-token` header against `XENDIT_CALLBACK_TOKEN`.
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-callback-token: <XENDIT_CALLBACK_TOKEN>`
+- **Request Payload**:
+  ```json
+  {
+    "id": "xendit_invoice_id (optional)",
+    "external_id": "upgrade_<user_id>_<uuid>",
+    "status": "PAID | <other_status>",
+    "amount": 50,
+    "paid_amount": 50,
+    "currency": "PHP",
+    "paid_plan_name": "Standard"
+  }
+  ```
+- **Response** (200 OK):
+  ```json
+  {
+    "received": true
+  }
+  ```
+- **Contract Notes**:
+  - If `status != "PAID"`, webhook is acknowledged with `{"received": true}` and no activation.
+  - For `PAID`, billing validates invoice intent (`external_id`, `id` when present, paid amount, currency) before activation.
+  - Re-delivered paid events for already-processed intents are idempotently acknowledged with `{"received": true}`.
+  - Validation/auth failures return gateway-normalized errors (typically 400/401).
 
 ---
 
