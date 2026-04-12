@@ -1,7 +1,8 @@
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import jwt
@@ -9,7 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, Integer, String, select
+from sqlalchemy import DateTime, Integer, String, Text, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -18,6 +19,7 @@ from config import (
     get_jwt_algorithm,
     get_jwt_secret,
     get_xendit_callback_token,
+    get_xendit_components_origins,
     get_xendit_secret_key,
 )
 
@@ -32,6 +34,11 @@ PLAN_PRICING = {
 }
 
 PAID_PLAN_NAMES = {"Standard", "Premium"}
+INTENT_STATUS_PENDING_PAYMENT = "pending_payment"
+INTENT_STATUS_PAID = "paid"
+INTENT_STATUS_SUPERSEDED = "superseded"
+INTENT_STATUS_CANCELLED = "cancelled"
+INTENT_REUSE_WINDOW = timedelta(minutes=30)
 
 
 class Base(DeclarativeBase):
@@ -59,6 +66,7 @@ class InvoiceIntentORM(Base):
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PHP")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    components_sdk_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -74,19 +82,21 @@ class SubscribeRequest(BaseModel):
 
 
 class SubscribeResponse(BaseModel):
-    invoice_url: str
+    components_sdk_key: str
 
 
-class XenditInvoiceResult(BaseModel):
-    invoice_url: str
-    invoice_id: str | None = None
+class XenditPaymentSessionResult(BaseModel):
+    components_sdk_key: str
+    payment_session_id: str | None = None
     currency: str = "PHP"
 
 
 class XenditWebhookPayload(BaseModel):
     id: str | None = None
-    external_id: str
-    status: str
+    external_id: str | None = None
+    reference_id: str | None = None
+    event: str | None = None
+    status: str | None = None
     amount: float | None = None
     paid_amount: float | None = None
     currency: str | None = None
@@ -110,8 +120,8 @@ def _to_iso_z(value: datetime | None) -> str | None:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _extract_paid_amount(payload: XenditWebhookPayload) -> int | None:
-    raw_amount = payload.paid_amount if payload.paid_amount is not None else payload.amount
+def _extract_paid_amount(*, paid_amount: float | None, amount: float | None) -> int | None:
+    raw_amount = paid_amount if paid_amount is not None else amount
     if raw_amount is None or raw_amount < 0:
         return None
 
@@ -125,6 +135,32 @@ def _session_factory_or_500() -> async_sessionmaker[AsyncSession]:
     if _SESSION_FACTORY is None:
         raise HTTPException(status_code=500, detail="DATABASE_URL is not configured")
     return _SESSION_FACTORY
+
+
+async def _ensure_invoice_intents_components_sdk_key_column(engine) -> None:
+    async with engine.begin() as conn:
+        def _column_type(sync_conn) -> str | None:
+            inspector = inspect(sync_conn)
+            columns = inspector.get_columns("invoice_intents")
+            for column in columns:
+                if column["name"] == "components_sdk_key":
+                    return str(column["type"]).lower()
+            return None
+
+        column_type = await conn.run_sync(_column_type)
+        if column_type is None:
+            await conn.execute(text("ALTER TABLE invoice_intents ADD COLUMN components_sdk_key TEXT"))
+            logger.info("Added missing invoice_intents.components_sdk_key column as TEXT")
+            return
+
+        if "character varying" in column_type or "varchar" in column_type:
+            await conn.execute(text("ALTER TABLE invoice_intents ALTER COLUMN components_sdk_key TYPE TEXT"))
+            logger.info("Expanded invoice_intents.components_sdk_key column to TEXT")
+
+
+def _to_reference_id(user_id: str) -> str:
+    compact_user_id = user_id.replace("-", "")[:16]
+    return f"upgrade_{compact_user_id}_{uuid4().hex[:32]}"
 
 
 def _decode_user_id(authorization: str | None) -> str:
@@ -156,7 +192,7 @@ def _decode_user_id(authorization: str | None) -> str:
     return user_id
 
 
-def _create_xendit_invoice(*, external_id: str, amount: int, description: str) -> XenditInvoiceResult:
+def _create_xendit_payment_session(*, reference_id: str, amount: int, description: str) -> XenditPaymentSessionResult:
     try:
         secret_key = get_xendit_secret_key()
     except RuntimeError as exc:
@@ -164,52 +200,89 @@ def _create_xendit_invoice(*, external_id: str, amount: int, description: str) -
 
     try:
         import xendit
-        from xendit.apis import InvoiceApi
         from xendit.exceptions import OpenApiException, XenditSdkException
-        from xendit.invoice.model.create_invoice_request import CreateInvoiceRequest
     except ModuleNotFoundError as exc:
         raise HTTPException(status_code=500, detail=f"xendit-python dependency missing: {exc.name}") from exc
+
+    payload = {
+        "reference_id": reference_id,
+        "session_type": "PAY",
+        "mode": "COMPONENTS",
+        "amount": amount,
+        "currency": "PHP",
+        "country": "PH",
+        "description": description,
+        "customer": {
+            "reference_id": reference_id,
+            "type": "INDIVIDUAL",
+            "individual_detail": {
+                "given_names": "MaaS User",
+            },
+        },
+        "components_configuration": {
+            "origins": get_xendit_components_origins(),
+        },
+    }
 
     try:
         xendit.set_api_key(secret_key)
         client = xendit.ApiClient()
-        invoice_api = InvoiceApi(client)
 
-        create_invoice_request = cast(
-            CreateInvoiceRequest,
-            CreateInvoiceRequest(
-                external_id=external_id,
-                amount=float(amount),
-                currency="PHP",
-                description=description,
-            ),
+        response_data = client.call_api(
+            "/sessions",
+            "POST",
+            body=payload,
+            _return_http_data_only=False,
+            _preload_content=False,
         )
-        invoice = invoice_api.create_invoice(create_invoice_request)
 
-        invoice_url = getattr(invoice, "invoice_url", None)
-        if not isinstance(invoice_url, str) or not invoice_url:
-            raise HTTPException(status_code=502, detail="Xendit invoice response missing invoice_url")
+        if response_data is None:
+            raise HTTPException(status_code=502, detail="Xendit session response is empty")
 
-        invoice_id = getattr(invoice, "id", None)
-        invoice_currency = getattr(invoice, "currency", None)
+        raw_response: Any
+        data_attr = getattr(response_data, "data", None)
+        if data_attr is not None:
+            raw_response = data_attr
+        else:
+            read_fn = getattr(response_data, "read", None)
+            if callable(read_fn):
+                raw_response = read_fn()
+            else:
+                raw_response = response_data
 
-        return XenditInvoiceResult(
-            invoice_url=invoice_url,
-            invoice_id=invoice_id if isinstance(invoice_id, str) and invoice_id else None,
-            currency=invoice_currency if isinstance(invoice_currency, str) and invoice_currency else "PHP",
+        response_text = raw_response.decode("utf-8") if isinstance(raw_response, (bytes, bytearray)) else str(raw_response)
+        response_payload = cast(dict[str, Any], json.loads(response_text))
+        logger.info(
+            "Created Xendit payment session reference_id=%s session_id=%s configured_origins=%s",
+            reference_id,
+            response_payload.get("id"),
+            payload["components_configuration"]["origins"],
+        )
+
+        components_sdk_key = response_payload.get("components_sdk_key")
+        if not isinstance(components_sdk_key, str) or not components_sdk_key:
+            raise HTTPException(status_code=502, detail="Xendit payment session response missing components_sdk_key")
+
+        payment_session_id = response_payload.get("id")
+        payment_session_currency = response_payload.get("currency")
+
+        return XenditPaymentSessionResult(
+            components_sdk_key=components_sdk_key,
+            payment_session_id=payment_session_id if isinstance(payment_session_id, str) and payment_session_id else None,
+            currency=payment_session_currency if isinstance(payment_session_currency, str) and payment_session_currency else "PHP",
         )
     except HTTPException:
         raise
     except XenditSdkException as exc:
-        logger.exception("Xendit SDK error while creating invoice")
-        message = getattr(exc, "errorMessage", None) or str(exc) or "Xendit invoice creation failed"
+        logger.exception("Xendit SDK error while creating payment session")
+        message = getattr(exc, "errorMessage", None) or str(exc) or "Xendit payment session creation failed"
         raise HTTPException(status_code=502, detail=message) from exc
     except OpenApiException as exc:
-        logger.exception("Xendit API error while creating invoice")
-        raise HTTPException(status_code=502, detail="Xendit invoice creation failed") from exc
+        logger.exception("Xendit API error while creating payment session")
+        raise HTTPException(status_code=502, detail="Xendit payment session creation failed") from exc
     except Exception as exc:
-        logger.exception("Failed to create Xendit invoice")
-        raise HTTPException(status_code=502, detail="Failed to create payment invoice") from exc
+        logger.exception("Failed to create Xendit payment session")
+        raise HTTPException(status_code=502, detail="Failed to create payment session") from exc
 
 
 async def _require_user_id(authorization: str | None = Header(default=None)) -> str:
@@ -230,6 +303,7 @@ async def lifespan(_: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+        await _ensure_invoice_intents_components_sdk_key_column(engine)
         _SESSION_FACTORY = session_factory
     else:
         logger.warning("DATABASE_URL is not configured; billing endpoints requiring DB will return 500")
@@ -274,26 +348,64 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
         raise HTTPException(status_code=400, detail="plan_name must be Standard or Premium")
 
     amount = PLAN_PRICING[plan_name]
-    external_id = f"upgrade_{user_id}_{uuid4()}"
-
-    invoice = _create_xendit_invoice(
-        external_id=external_id,
-        amount=amount,
-        description=f"{plan_name} Plan Upgrade",
-    )
+    sdk_key: str | None = None
+    reusable_intent_id: str | None = None
+    reusable_created_at: datetime | None = None
 
     async with session_factory() as session:
-        session.add(
-            InvoiceIntentORM(
-                external_id=external_id,
-                xendit_invoice_id=invoice.invoice_id,
-                user_id=user_id,
-                plan_name=plan_name,
-                amount=amount,
-                currency=invoice.currency.upper(),
-                status="pending_payment",
+        now = datetime.now(UTC)
+
+        pending_intent_result = await session.execute(
+            select(InvoiceIntentORM).where(
+                InvoiceIntentORM.user_id == user_id,
+                InvoiceIntentORM.status == INTENT_STATUS_PENDING_PAYMENT,
             )
         )
+        pending_intents = list(pending_intent_result.scalars().all())
+
+        for intent in pending_intents:
+            if intent.plan_name != plan_name:
+                continue
+            if intent.processed_at is not None:
+                continue
+            if not intent.components_sdk_key:
+                continue
+
+            created_at = intent.created_at if intent.created_at.tzinfo is not None else intent.created_at.replace(tzinfo=UTC)
+            if now - created_at > INTENT_REUSE_WINDOW:
+                continue
+
+            if reusable_created_at is None or created_at > reusable_created_at:
+                reusable_created_at = created_at
+                reusable_intent_id = intent.id
+                sdk_key = intent.components_sdk_key
+
+        for intent in pending_intents:
+            if reusable_intent_id is not None and intent.id == reusable_intent_id:
+                continue
+            intent.status = INTENT_STATUS_SUPERSEDED
+
+        if sdk_key is None:
+            reference_id = _to_reference_id(user_id)
+            payment_session = _create_xendit_payment_session(
+                reference_id=reference_id,
+                amount=amount,
+                description=f"{plan_name} Plan Upgrade",
+            )
+
+            session.add(
+                InvoiceIntentORM(
+                    external_id=reference_id,
+                    xendit_invoice_id=payment_session.payment_session_id,
+                    user_id=user_id,
+                    plan_name=plan_name,
+                    amount=amount,
+                    currency=payment_session.currency.upper(),
+                    status=INTENT_STATUS_PENDING_PAYMENT,
+                    components_sdk_key=payment_session.components_sdk_key,
+                )
+            )
+            sdk_key = payment_session.components_sdk_key
 
         result = await session.execute(select(SubscriptionORM).where(SubscriptionORM.user_id == user_id))
         subscription = result.scalar_one_or_none()
@@ -302,18 +414,18 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
             subscription = SubscriptionORM(
                 user_id=user_id,
                 plan_name=plan_name,
-                status="pending_payment",
+                status=INTENT_STATUS_PENDING_PAYMENT,
                 expires_at=None,
             )
             session.add(subscription)
         else:
             subscription.plan_name = plan_name
-            subscription.status = "pending_payment"
+            subscription.status = INTENT_STATUS_PENDING_PAYMENT
             subscription.expires_at = None
 
         await session.commit()
 
-    return SubscribeResponse(invoice_url=invoice.invoice_url)
+    return SubscribeResponse(components_sdk_key=cast(str, sdk_key))
 
 
 @app.post("/api/v1/billing/webhook/xendit", response_model=WebhookResponse)
@@ -324,10 +436,18 @@ async def billing_webhook_xendit(
     expected_token = get_xendit_callback_token()
     if x_callback_token is None or x_callback_token != expected_token:
         raise HTTPException(status_code=401, detail="Invalid or missing webhook callback token")
-    if payload.status != "PAID":
+
+    if payload.event is not None:
+        if payload.event != "payment_session.completed":
+            return WebhookResponse(received=True)
+    elif payload.status != "PAID":
         return WebhookResponse(received=True)
 
-    paid_amount = _extract_paid_amount(payload)
+    reference_id = payload.reference_id or payload.external_id
+    if reference_id is None:
+        raise HTTPException(status_code=400, detail="Missing reference_id")
+
+    paid_amount = _extract_paid_amount(paid_amount=payload.paid_amount, amount=payload.amount)
     if paid_amount is None:
         raise HTTPException(status_code=400, detail="Invalid paid amount")
 
@@ -339,16 +459,19 @@ async def billing_webhook_xendit(
     expires_at = datetime.now(UTC) + timedelta(days=30)
 
     async with session_factory() as session:
-        intent_result = await session.execute(select(InvoiceIntentORM).where(InvoiceIntentORM.external_id == payload.external_id))
+        intent_result = await session.execute(select(InvoiceIntentORM).where(InvoiceIntentORM.external_id == reference_id))
         intent = intent_result.scalar_one_or_none()
         if intent is None:
-            raise HTTPException(status_code=400, detail="Unknown external_id")
+            raise HTTPException(status_code=400, detail="Unknown reference_id")
 
-        if intent.processed_at is not None or intent.status == "paid":
+        if intent.status != INTENT_STATUS_PENDING_PAYMENT:
+            return WebhookResponse(received=True)
+
+        if intent.processed_at is not None:
             return WebhookResponse(received=True)
 
         if intent.xendit_invoice_id is not None and payload.id != intent.xendit_invoice_id:
-            raise HTTPException(status_code=400, detail="Invoice ID mismatch")
+            raise HTTPException(status_code=400, detail="Payment session ID mismatch")
 
         if paid_amount != intent.amount:
             raise HTTPException(status_code=400, detail="Amount mismatch")
@@ -372,7 +495,7 @@ async def billing_webhook_xendit(
             subscription.status = "active"
             subscription.expires_at = expires_at
 
-        intent.status = "paid"
+        intent.status = INTENT_STATUS_PAID
         intent.processed_at = datetime.now(UTC)
 
         await session.commit()
