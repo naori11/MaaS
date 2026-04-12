@@ -290,6 +290,25 @@ def test_auth_me_route_requires_bearer_header():
     assert body["error"]["code"] == "unauthorized"
 
 
+def test_ledger_transactions_requires_bearer_header():
+    response = client.get("/api/v1/ledger/transactions")
+
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "unauthorized"
+
+
+def test_ledger_transactions_forwards_get_with_authorization_and_query_params():
+    response = client.get(
+        "/api/v1/ledger/transactions?limit=2",
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 200
+    assert FakeAsyncClient.requests[0]["method"] == "GET"
+    assert FakeAsyncClient.requests[0]["url"] == f"{main.LEDGER_SERVICE_URL}/api/v1/ledger/transactions?limit=2"
+
+
 def test_rate_limit_returns_429(monkeypatch):
     monkeypatch.setattr(main, "RATE_LIMIT_REQUESTS", 1)
 

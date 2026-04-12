@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
+import { resolvePostAuthRedirect, setAuthSession } from "../_lib/mock-auth";
 
 function SignupPageContent() {
   const [name, setName] = useState("");
@@ -18,22 +18,73 @@ function SignupPageContent() {
 
   const nextPath = useMemo(() => resolvePostAuthRedirect(searchParams.get("next")), [searchParams]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setError("Full Name, Node Identity, and Access Cipher are required.");
+    if (!email.trim() || !password.trim()) {
+      setError("Node Identity and Access Cipher are required.");
       return;
     }
 
     setError("");
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setMockAuthCookie();
+    try {
+      const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
+
+      const registerResponse = await fetch(`${gatewayBaseUrl}/api/v1/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      const registerPayload = (await registerResponse.json()) as { error?: { message?: string } } | undefined;
+
+      if (!registerResponse.ok) {
+        setError(registerPayload?.error?.message ?? "Unable to create account.");
+        return;
+      }
+
+      const loginResponse = await fetch(`${gatewayBaseUrl}/api/v1/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      const loginPayload = (await loginResponse.json()) as
+        | { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } }
+        | undefined;
+
+      if (!loginResponse.ok || !loginPayload?.access_token) {
+        setError(loginPayload?.error?.message ?? "Account created. Please sign in.");
+        router.push(`/login?next=${encodeURIComponent(nextPath)}`);
+        router.refresh();
+        return;
+      }
+
+      setAuthSession({
+        accessToken: loginPayload.access_token,
+        tokenType: loginPayload.token_type ?? "bearer",
+        expiresInSeconds: loginPayload.expires_in ?? 3600,
+      });
+
       router.push(nextPath);
       router.refresh();
-    }, 250);
+    } catch {
+      setError("Unable to reach authentication gateway.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

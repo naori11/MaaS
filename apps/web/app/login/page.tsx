@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect, setMockAuthCookie } from "../_lib/mock-auth";
+import { resolvePostAuthRedirect, setAuthSession } from "../_lib/mock-auth";
 
 function LoginPageContent() {
   const [email, setEmail] = useState("");
@@ -16,22 +16,16 @@ function LoginPageContent() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nextPath = useMemo(() => resolvePostAuthRedirect(searchParams.get("next")), [searchParams]);
 
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current !== null) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       setError("Node Identity and Access Cipher are required.");
       return;
     }
@@ -39,11 +33,41 @@ function LoginPageContent() {
     setError("");
     setIsSubmitting(true);
 
-    redirectTimerRef.current = setTimeout(() => {
-      setMockAuthCookie();
+    try {
+      const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
+      const response = await fetch(`${gatewayBaseUrl}/api/v1/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: trimmedPassword,
+        }),
+      });
+
+      const payload = (await response.json()) as
+        | { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } }
+        | undefined;
+
+      if (!response.ok || !payload?.access_token) {
+        setError(payload?.error?.message ?? "Invalid credentials.");
+        return;
+      }
+
+      setAuthSession({
+        accessToken: payload.access_token,
+        tokenType: payload.token_type ?? "bearer",
+        expiresInSeconds: payload.expires_in ?? 3600,
+      });
+
       router.push(nextPath);
       router.refresh();
-    }, 250);
+    } catch {
+      setError("Unable to reach authentication gateway.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

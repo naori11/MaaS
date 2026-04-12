@@ -1,11 +1,11 @@
 "use client";
 
 import { MotionButton } from "./motion/motion-primitives";
-import { clearMockAuthCookie } from "../_lib/mock-auth";
+import { clearAuthSession } from "../_lib/mock-auth";
 
 export function LogoutButton() {
   const handleLogout = () => {
-    clearMockAuthCookie();
+    clearAuthSession();
     window.location.assign("/login");
   };
 

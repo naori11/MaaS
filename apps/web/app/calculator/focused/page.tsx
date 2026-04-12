@@ -1,8 +1,18 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MotionButton, MotionSection } from "../../_components/motion/motion-primitives";
+import { calculateGatewayOperation, isAuthGatewayMathError, toCalculatorErrorMessage } from "../../_lib/api/math";
+import {
+  applyCalculatorKey,
+  applyEvaluationFailure,
+  applyEvaluationSuccess,
+  createInitialCalculatorState,
+  type CalculatorKey,
+} from "../../_lib/calculator/model";
 
-const rows = [
+const rows: CalculatorKey[][] = [
   ["AC", "+/-", "%", "÷"],
   ["7", "8", "9", "×"],
   ["4", "5", "6", "−"],
@@ -10,9 +20,49 @@ const rows = [
   ["0", ".", "="],
 ];
 
-const isAction = (value: string) => ["÷", "×", "−", "+", "="].includes(value);
+const isAction = (value: CalculatorKey) => ["÷", "×", "−", "+", "="].includes(value);
 
 export default function CalculatorFocusedPage() {
+  const [calculatorState, setCalculatorState] = useState(createInitialCalculatorState);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const router = useRouter();
+
+  const handleKeyPress = async (key: CalculatorKey) => {
+    if (isEvaluating) {
+      return;
+    }
+
+    const transition = applyCalculatorKey(calculatorState, key);
+    setCalculatorState(transition.nextState);
+
+    if (transition.command.type !== "evaluate") {
+      return;
+    }
+
+    const evaluateCommand = transition.command;
+    setIsEvaluating(true);
+
+    try {
+      const response = await calculateGatewayOperation(
+        evaluateCommand.operator,
+        evaluateCommand.operandA,
+        evaluateCommand.operandB,
+      );
+
+      setCalculatorState((currentState) => applyEvaluationSuccess(currentState, evaluateCommand, response.result));
+    } catch (error) {
+      if (isAuthGatewayMathError(error)) {
+        router.push(`/login?next=${encodeURIComponent("/calculator/focused")}`);
+        router.refresh();
+        return;
+      }
+
+      setCalculatorState(applyEvaluationFailure(evaluateCommand, toCalculatorErrorMessage(error)));
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
   return (
     <>
       <MotionSection className="relative mx-auto w-full max-w-lg">
@@ -28,9 +78,14 @@ export default function CalculatorFocusedPage() {
               }}
             />
             <div className="mb-1 text-sm font-medium uppercase tracking-[0.15em] text-[#edf3ff]/40">Current Expression</div>
-            <div className="mb-2 max-w-full truncate text-right text-xs uppercase tracking-[0.1em] text-[#edf3ff]/40">0</div>
+            <div className="mb-2 max-w-full truncate text-right text-xs uppercase tracking-[0.1em] text-[#edf3ff]/40">{calculatorState.expression}</div>
+            {calculatorState.error ? (
+              <div role="alert" className="mb-2 max-w-full truncate text-right text-xs font-semibold tracking-[0.08em] text-[#ff8da6]">
+                {calculatorState.error}
+              </div>
+            ) : null}
             <output className="text-5xl font-bold tracking-tight text-white md:text-6xl" aria-live="polite" aria-label="Calculator result">
-              0
+              {isEvaluating ? "…" : calculatorState.currentInput}
             </output>
           </div>
 
@@ -45,7 +100,9 @@ export default function CalculatorFocusedPage() {
                   <MotionButton
                     key={`${rowIndex}-${item}`}
                     type="button"
-                    className={`h-16 rounded-2xl font-bold transition active:scale-95 ${wide ? "col-span-2 px-8 text-left" : ""} ${
+                    onClick={() => void handleKeyPress(item)}
+                    disabled={isEvaluating}
+                    className={`h-16 rounded-2xl font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 ${wide ? "col-span-2 px-8 text-left" : ""} ${
                       action
                         ? "maas-enterprise-gradient text-2xl text-white shadow-lg shadow-[#b60055]/20"
                         : utility
