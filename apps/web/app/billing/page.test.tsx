@@ -30,9 +30,13 @@ describe("Billing page", () => {
     await waitFor(() => {
       expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Pro");
     });
+
+    expect(screen.getByText("₱0")).toBeInTheDocument();
+    expect(screen.getByText("₱50")).toBeInTheDocument();
+    expect(screen.getByText("₱250")).toBeInTheDocument();
   });
 
-  it("subscribes to pro and opens returned invoice url", async () => {
+  it("starts checkout and keeps plan pending activation", async () => {
     vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
       plan_name: "Free",
       status: "active",
@@ -48,14 +52,33 @@ describe("Billing page", () => {
       expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Hobby");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Upgrade Now" }));
+    const [proUpgradeButton] = screen.getAllByRole("button", { name: "Upgrade Now" });
+    fireEvent.click(proUpgradeButton);
 
     await waitFor(() => {
       expect(billingApi.subscribeToPlan).toHaveBeenCalledWith("Standard");
     });
 
     expect(window.open).toHaveBeenCalledWith("https://billing.example/invoice/123", "_blank", "noopener,noreferrer");
-    expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Pro");
+    expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Hobby");
+    expect(screen.getByRole("status")).toHaveTextContent("Checkout opened in a new tab. Payment for Pro is pending activation.");
+  });
+
+  it("shows pending payment status from backend", async () => {
+    vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
+      plan_name: "Premium",
+      status: "pending_payment",
+      expires_at: null,
+    });
+
+    render(<BillingPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Enterprise");
+    });
+
+    expect(screen.getByText(/Pending activation: Enterprise/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Payment for Enterprise is pending. Complete checkout to activate your plan.");
   });
 
   it("shows api error when status loading fails", async () => {
