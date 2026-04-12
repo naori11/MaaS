@@ -254,6 +254,11 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
     if authorization:
         upstream_headers["Authorization"] = authorization
 
+    if request.url.path == "/api/v1/billing/webhook/xendit":
+        callback_token = request.headers.get("x-callback-token")
+        if callback_token:
+            upstream_headers["x-callback-token"] = callback_token
+
     timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
 
     try:

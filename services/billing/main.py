@@ -275,11 +275,8 @@ async def billing_webhook_xendit(
     x_callback_token: str | None = Header(default=None, alias="x-callback-token"),
 ) -> WebhookResponse:
     expected_token = get_xendit_callback_token()
-    if expected_token is not None:
-        if x_callback_token is None or x_callback_token != expected_token:
-            raise HTTPException(status_code=401, detail="Invalid or missing webhook callback token")
-    else:
-        logger.warning("XENDIT_CALLBACK_TOKEN is not configured; webhook requests are not authenticated")
+    if x_callback_token is None or x_callback_token != expected_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing webhook callback token")
     if payload.status != "PAID":
         return WebhookResponse(received=True)
 

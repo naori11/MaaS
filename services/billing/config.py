@@ -36,5 +36,5 @@ def get_xendit_secret_key() -> str:
     return _require_env("XENDIT_SECRET_KEY")
 
 
-def get_xendit_callback_token() -> str | None:
-    return _optional_env("XENDIT_CALLBACK_TOKEN")
+def get_xendit_callback_token() -> str:
+    return _require_env("XENDIT_CALLBACK_TOKEN")
