@@ -1,6 +1,6 @@
 import { toApiClientError } from "./errors";
 
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_GATEWAY_BASE_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
 
 type RequestOptions = {
   method?: "GET" | "POST";

@@ -4,8 +4,8 @@ export const AUTH_TOKEN_COOKIE = "maas_auth_token";
 export const AUTH_TOKEN_TYPE_COOKIE = "maas_auth_token_type";
 export const AUTH_EXPIRES_AT_COOKIE = "maas_auth_expires_at";
 
-function maxAgeToExpiresAtSeconds(maxAgeSeconds: number): string {
-  return String(Math.floor(Date.now() / 1000) + maxAgeSeconds);
+function maxAgeToExpiresAtMs(maxAgeSeconds: number): string {
+  return String(Date.now() + maxAgeSeconds * 1000);
 }
 
 function parseDocumentCookies(): Map<string, string> {
@@ -51,7 +51,7 @@ export function writeAuthCookies(payload: { token: string; tokenType: string; ex
 
   setCookie(AUTH_TOKEN_COOKIE, payload.token, maxAgeSeconds);
   setCookie(AUTH_TOKEN_TYPE_COOKIE, payload.tokenType, maxAgeSeconds);
-  setCookie(AUTH_EXPIRES_AT_COOKIE, maxAgeToExpiresAtSeconds(maxAgeSeconds), maxAgeSeconds);
+  setCookie(AUTH_EXPIRES_AT_COOKIE, maxAgeToExpiresAtMs(maxAgeSeconds), maxAgeSeconds);
 }
 
 export function clearAuthCookies() {

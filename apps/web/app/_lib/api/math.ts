@@ -1,5 +1,6 @@
 import type { CalculatorOperator } from "../calculator/model";
 import { clearAuthSession, getAuthTokenFromBrowserSession, getAuthTokenTypeFromBrowserSession } from "../mock-auth";
+import { parseGatewayError } from "./errors";
 
 const endpointByOperator: Record<CalculatorOperator, string> = {
   "+": "/api/v1/calculate/add",
@@ -24,10 +25,17 @@ class GatewayMathError extends Error {
   }
 }
 
-const readResponseMessage = async (response: Response) => {
+const readGatewayErrorMessage = async (response: Response): Promise<string | null> => {
   try {
-    const payload = (await response.json()) as { message?: string };
-    return payload.message;
+    const payload: unknown = await response.json();
+    const parsed = parseGatewayError(payload);
+    if (parsed) {
+      return parsed.error.message;
+    }
+    if (typeof payload === "object" && payload !== null && "message" in payload && typeof (payload as { message?: unknown }).message === "string") {
+      return (payload as { message: string }).message;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -65,7 +73,7 @@ export const calculateGatewayOperation = async (
   }
 
   if (!response.ok) {
-    const responseMessage = await readResponseMessage(response);
+    const responseMessage = await readGatewayErrorMessage(response);
     throw new GatewayMathError(responseMessage ?? "Calculation request failed.", response.status);
   }
 
@@ -87,5 +95,5 @@ export const toCalculatorErrorMessage = (error: unknown) => {
     return error.message;
   }
 
-  return "Unable to reach math gateway at http://localhost:4000.";
+  return `Unable to reach math gateway at ${gatewayBaseUrl}.`;
 };

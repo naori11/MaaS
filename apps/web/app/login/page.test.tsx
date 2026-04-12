@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LoginPage from "./page";
 
 const { push, refresh, setAuthSession, fetchMock, nextValue } = vi.hoisted(() => ({
@@ -35,6 +35,10 @@ describe("Login page", () => {
     vi.clearAllMocks();
     nextValue.value = "/history";
     vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders session initiation form", () => {

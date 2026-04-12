@@ -19,7 +19,7 @@ type GatewayErrorResponse = {
 };
 
 function resolveGatewayBaseUrl() {
-  const value = process.env.NEXT_PUBLIC_GATEWAY_URL?.trim();
+  const value = process.env.NEXT_PUBLIC_API_GATEWAY_URL?.trim();
 
   if (!value) {
     return DEFAULT_GATEWAY_URL;

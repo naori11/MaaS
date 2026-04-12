@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HistoryPage from "./page";
 
 const ledgerItems = [
@@ -28,14 +28,18 @@ describe("History page", () => {
       writable: true,
       value: vi.fn(),
     });
-    Object.defineProperty(globalThis, "fetch", {
-      writable: true,
-      value: vi.fn().mockResolvedValue({
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ items: ledgerItems }),
       }),
-    });
+    );
     HTMLAnchorElement.prototype.click = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders history heading, key controls, and API-fed rows", async () => {
