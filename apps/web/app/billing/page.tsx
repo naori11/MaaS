@@ -30,7 +30,7 @@ const plans: Plan[] = [
   {
     name: "Hobby",
     badge: "Sandbox",
-    price: "$0",
+    price: "₱0",
     period: "/month",
     cta: "Start Computing",
     featured: false,
@@ -40,7 +40,7 @@ const plans: Plan[] = [
   {
     name: "Pro",
     badge: "Growth",
-    price: "$29",
+    price: "₱50",
     period: "/month",
     cta: "Upgrade Now",
     featured: true,
@@ -50,9 +50,9 @@ const plans: Plan[] = [
   {
     name: "Enterprise",
     badge: "Scale",
-    price: "Custom",
-    period: "",
-    cta: "Contact Sales",
+    price: "₱250",
+    period: "/month",
+    cta: "Upgrade Now",
     featured: false,
     features: [
       "Dedicated servers for division.",
@@ -69,6 +69,8 @@ const paymentMethods = ["Visa ending in 4421", "Mastercard ending in 1102", "Ame
 export default function BillingPage() {
   const shouldReduceMotion = useReducedMotion();
   const [currentPlan, setCurrentPlan] = useState<UiBillingPlanName>("Hobby");
+  const [billingStatus, setBillingStatus] = useState<"active" | "pending_payment">("active");
+  const [pendingPlan, setPendingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
@@ -90,8 +92,25 @@ export default function BillingPage() {
           return;
         }
 
-        setCurrentPlan(mapBackendPlanToUiPlan(status.plan_name));
-        setStatusMessage(status.status === "pending_payment" ? "Payment is pending. Complete checkout to activate your plan." : "");
+        const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
+
+        if (status.status === "pending_payment") {
+          const pendingActivationPlan = mappedPlan === "Hobby" ? null : mappedPlan;
+
+          setBillingStatus("pending_payment");
+          setCurrentPlan(mappedPlan);
+          setPendingPlan(pendingActivationPlan);
+          setStatusMessage(
+            pendingActivationPlan
+              ? `Payment for ${pendingActivationPlan} is pending. Complete checkout to activate your plan.`
+              : "Payment is pending. Complete checkout to activate your plan.",
+          );
+        } else {
+          setBillingStatus("active");
+          setPendingPlan(null);
+          setCurrentPlan(mappedPlan);
+          setStatusMessage("");
+        }
       } catch (error) {
         if (!isMounted) {
           return;
@@ -115,6 +134,7 @@ export default function BillingPage() {
     }
 
     setErrorMessage("");
+    setStatusMessage("");
 
     if (plan === "Hobby") {
       setStatusMessage("Downgrades to Hobby are currently handled by support.");
@@ -125,9 +145,10 @@ export default function BillingPage() {
 
     try {
       const response = await subscribeToPlan(toSubscribableBackendPlan(plan));
-      setCurrentPlan(plan);
+      setBillingStatus("pending_payment");
+      setPendingPlan(plan);
       window.open(response.invoice_url, "_blank", "noopener,noreferrer");
-      setStatusMessage("Checkout opened in a new tab.");
+      setStatusMessage(`Checkout opened in a new tab. Payment for ${plan} is pending activation.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start checkout.");
     } finally {
@@ -157,6 +178,11 @@ export default function BillingPage() {
         <p className="mb-2 text-sm font-semibold text-[#4d5d73]" aria-live="polite">
           Current plan: <span className="text-[#b60055]">{currentPlan}</span>
         </p>
+        {billingStatus === "pending_payment" && pendingPlan ? (
+          <p className="mb-2 text-xs font-semibold text-[#b60055]" aria-live="polite">
+            Pending activation: {pendingPlan}
+          </p>
+        ) : null}
         {statusMessage ? (
           <p className="mb-2 rounded-lg border border-[#9eaec7]/20 bg-white px-3 py-2 text-xs font-semibold text-[#4d5d73]" role="status">
             {statusMessage}
@@ -174,6 +200,7 @@ export default function BillingPage() {
       <MotionStaggerContainer className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:gap-6 xl:grid-cols-3 xl:gap-8">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.name;
+          const isPending = billingStatus === "pending_payment" && pendingPlan === plan.name;
           const isSubmitting = subscribingPlan === plan.name;
 
           return (
@@ -239,7 +266,7 @@ export default function BillingPage() {
                           : "bg-[#d2e4ff] text-[#203044]"
                   }`}
                 >
-                  {isCurrent ? "Current Plan" : isSubmitting ? "Opening Checkout..." : plan.cta}
+                  {isCurrent ? "Current Plan" : isPending ? "Pending Activation" : isSubmitting ? "Opening Checkout..." : plan.cta}
                 </MotionButton>
               </MotionCard>
             </MotionStaggerItem>
@@ -258,8 +285,8 @@ export default function BillingPage() {
             ) : null}
             <div className="space-y-3 sm:space-y-4">
               {[
-                { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "$29.00", strong: true },
-                { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "$29.00", strong: false },
+                { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "₱50.00", strong: true },
+                { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "₱50.00", strong: false },
               ].map((invoice, index) => (
                 <motion.div
                   key={invoice.id}
