@@ -353,6 +353,8 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
 
     amount = PLAN_PRICING[plan_name]
 
+    reuse_cutoff = datetime.now(UTC) - INTENT_REUSE_WINDOW
+
     async with session_factory() as session:
         pending_intent_result = await session.execute(
             select(InvoiceIntentORM).where(
@@ -361,6 +363,20 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
             )
         )
         pending_intents = list(pending_intent_result.scalars().all())
+
+        reusable_intent = next(
+            (
+                intent
+                for intent in pending_intents
+                if intent.plan_name == plan_name
+                and (intent.created_at if intent.created_at.tzinfo is not None else intent.created_at.replace(tzinfo=UTC)) >= reuse_cutoff
+            ),
+            None,
+        )
+
+        if reusable_intent is not None:
+            logger.info("Reusing existing pending intent: intent_id=%s plan=%s", reusable_intent.id, reusable_intent.plan_name)
+            return SubscribeResponse(components_sdk_key=cast(str, reusable_intent.components_sdk_key))
 
         for intent in pending_intents:
             intent.status = INTENT_STATUS_SUPERSEDED
