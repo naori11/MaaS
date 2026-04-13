@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   MotionButton,
@@ -30,7 +30,7 @@ const plans: Plan[] = [
   {
     name: "Hobby",
     badge: "Sandbox",
-    price: "$0",
+    price: "₱0",
     period: "/month",
     cta: "Start Computing",
     featured: false,
@@ -40,7 +40,7 @@ const plans: Plan[] = [
   {
     name: "Pro",
     badge: "Growth",
-    price: "$29",
+    price: "₱50",
     period: "/month",
     cta: "Upgrade Now",
     featured: true,
@@ -50,9 +50,9 @@ const plans: Plan[] = [
   {
     name: "Enterprise",
     badge: "Scale",
-    price: "Custom",
-    period: "",
-    cta: "Contact Sales",
+    price: "₱250",
+    period: "/month",
+    cta: "Upgrade Now",
     featured: false,
     features: [
       "Dedicated servers for division.",
@@ -66,15 +66,92 @@ const plans: Plan[] = [
 
 const paymentMethods = ["Visa ending in 4421", "Mastercard ending in 1102", "Amex ending in 9014"];
 
+const XENDIT_COMPONENTS_SCRIPT_SRC = "https://assets.xendit.co/components/v0.0.21/index.umd.js";
+
+type XenditComponentsInstance = {
+  createChannelPickerComponent: () => HTMLElement;
+  submit: () => void;
+  addEventListener: (eventName: string, callback: () => void) => void;
+};
+
+type XenditWindow = Window & {
+  Xendit?: {
+    XenditComponents?: new (options: { componentsSdkKey: string }) => XenditComponentsInstance;
+  };
+};
+
+function ensureXenditComponentsScript() {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  if ((window as XenditWindow).Xendit?.XenditComponents) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const createScript = () => {
+      const script = document.createElement("script");
+      script.src = XENDIT_COMPONENTS_SCRIPT_SRC;
+      script.async = true;
+      script.dataset.xenditComponentsState = "loading";
+      script.addEventListener(
+        "load",
+        () => {
+          script.dataset.xenditComponentsState = "loaded";
+          resolve();
+        },
+        { once: true },
+      );
+      script.addEventListener(
+        "error",
+        () => {
+          script.dataset.xenditComponentsState = "error";
+          reject(new Error("Unable to load Xendit Components SDK."));
+        },
+        { once: true },
+      );
+      document.head.appendChild(script);
+    };
+
+    const existingScript = document.querySelector(`script[src="${XENDIT_COMPONENTS_SCRIPT_SRC}"]`) as HTMLScriptElement | null;
+
+    if (existingScript) {
+      if ((window as XenditWindow).Xendit?.XenditComponents || existingScript.dataset.xenditComponentsState === "loaded") {
+        resolve();
+        return;
+      }
+
+      if (existingScript.dataset.xenditComponentsState === "error") {
+        existingScript.remove();
+        createScript();
+        return;
+      }
+
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Unable to load Xendit Components SDK.")), { once: true });
+      return;
+    }
+
+    createScript();
+  });
+}
+
 export default function BillingPage() {
   const shouldReduceMotion = useReducedMotion();
   const [currentPlan, setCurrentPlan] = useState<UiBillingPlanName>("Hobby");
+  const [billingStatus, setBillingStatus] = useState<"active" | "pending_payment">("active");
+  const [pendingPlan, setPendingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [subscribingPlan, setSubscribingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [sdkKey, setSdkKey] = useState<string | null>(null);
+  const checkoutContainerRef = useRef<HTMLDivElement | null>(null);
+  const xenditInstanceRef = useRef<XenditComponentsInstance | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -90,8 +167,25 @@ export default function BillingPage() {
           return;
         }
 
-        setCurrentPlan(mapBackendPlanToUiPlan(status.plan_name));
-        setStatusMessage(status.status === "pending_payment" ? "Payment is pending. Complete checkout to activate your plan." : "");
+        const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
+
+        if (status.status === "pending_payment") {
+          const pendingActivationPlan = mappedPlan === "Hobby" ? null : mappedPlan;
+
+          setBillingStatus("pending_payment");
+          setCurrentPlan(mappedPlan);
+          setPendingPlan(pendingActivationPlan);
+          setStatusMessage(
+            pendingActivationPlan
+              ? `Payment for ${pendingActivationPlan} is pending. Complete checkout to activate your plan.`
+              : "Payment is pending. Complete checkout to activate your plan.",
+          );
+        } else {
+          setBillingStatus("active");
+          setPendingPlan(null);
+          setCurrentPlan(mappedPlan);
+          setStatusMessage("");
+        }
       } catch (error) {
         if (!isMounted) {
           return;
@@ -109,12 +203,138 @@ export default function BillingPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!sdkKey || !checkoutContainerRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    let pollingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const mountCheckout = async () => {
+      try {
+        await ensureXenditComponentsScript();
+
+        if (cancelled) {
+          return;
+        }
+
+        const xenditWindow = window as XenditWindow;
+        const XenditComponents = xenditWindow.Xendit?.XenditComponents;
+
+        if (!XenditComponents) {
+          throw new Error("Xendit Components SDK is unavailable.");
+        }
+
+        const instance = new XenditComponents({ componentsSdkKey: sdkKey });
+        xenditInstanceRef.current = instance;
+        const picker = instance.createChannelPickerComponent();
+
+        if (!checkoutContainerRef.current) {
+          return;
+        }
+
+        checkoutContainerRef.current.replaceChildren(picker);
+
+        const pollForActiveStatus = async (maxAttempts = 10, intervalMs = 3000) => {
+          let attempts = 0;
+
+          const poll = async (): Promise<void> => {
+            if (cancelled) {
+              return;
+            }
+
+            attempts++;
+
+            try {
+              const status = await getBillingStatus();
+              const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
+
+              if (status.status === "active") {
+                setCurrentPlan(mappedPlan);
+                setBillingStatus("active");
+                setPendingPlan(null);
+                setStatusMessage("Payment completed. Your plan is now active.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              if (attempts >= maxAttempts) {
+                setCurrentPlan(mappedPlan);
+                setBillingStatus(status.status);
+                setPendingPlan(status.status === "pending_payment" && mappedPlan !== "Hobby" ? mappedPlan : null);
+                setStatusMessage("Payment is processing. Please refresh the page to check your updated status.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              setStatusMessage(`Payment processing... (checking ${attempts}/${maxAttempts})`);
+              pollingTimeoutId = setTimeout(() => void poll(), intervalMs);
+            } catch (error) {
+              if (attempts >= maxAttempts) {
+                setStatusMessage("Payment completed. Refresh to confirm updated status.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              pollingTimeoutId = setTimeout(() => void poll(), intervalMs);
+            }
+          };
+
+          await poll();
+        };
+
+        instance.addEventListener("session-complete", () => {
+          setStatusMessage("Payment completed. Verifying status...");
+          void pollForActiveStatus();
+        });
+
+        instance.addEventListener("session-expired-or-canceled", () => {
+          setIsCheckingOut(false);
+          setSdkKey(null);
+          setPendingPlan(null);
+          setBillingStatus("active");
+          setStatusMessage("Payment was canceled or expired. Please try again.");
+        });
+
+        instance.addEventListener("will-redirect", () => {
+          setStatusMessage("Completing payment...");
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setIsCheckingOut(false);
+        setSdkKey(null);
+        setErrorMessage(error instanceof Error ? error.message : "Unable to initialize embedded checkout.");
+      }
+    };
+
+    void mountCheckout();
+
+    return () => {
+      cancelled = true;
+      if (pollingTimeoutId) {
+        clearTimeout(pollingTimeoutId);
+      }
+      if (checkoutContainerRef.current) {
+        checkoutContainerRef.current.replaceChildren();
+      }
+      xenditInstanceRef.current = null;
+    };
+  }, [sdkKey]);
+
   const handleSelectPlan = async (plan: UiBillingPlanName) => {
-    if (plan === currentPlan) {
+    if (plan === currentPlan && !(billingStatus === "pending_payment" && pendingPlan === plan)) {
       return;
     }
 
     setErrorMessage("");
+    setStatusMessage("");
 
     if (plan === "Hobby") {
       setStatusMessage("Downgrades to Hobby are currently handled by support.");
@@ -125,9 +345,11 @@ export default function BillingPage() {
 
     try {
       const response = await subscribeToPlan(toSubscribableBackendPlan(plan));
-      setCurrentPlan(plan);
-      window.open(response.invoice_url, "_blank", "noopener,noreferrer");
-      setStatusMessage("Checkout opened in a new tab.");
+      setBillingStatus("pending_payment");
+      setPendingPlan(plan);
+      setSdkKey(response.components_sdk_key);
+      setIsCheckingOut(true);
+      setStatusMessage(`Complete your embedded checkout to activate ${plan}.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start checkout.");
     } finally {
@@ -138,6 +360,10 @@ export default function BillingPage() {
   const handleSelectPaymentMethod = (method: string) => {
     setPaymentMethod(method);
     setShowPaymentOptions(false);
+  };
+
+  const handleSubmitEmbeddedCheckout = () => {
+    xenditInstanceRef.current?.submit();
   };
 
   const handleDownloadInvoice = (invoiceId: string) => {
@@ -157,6 +383,11 @@ export default function BillingPage() {
         <p className="mb-2 text-sm font-semibold text-[#4d5d73]" aria-live="polite">
           Current plan: <span className="text-[#b60055]">{currentPlan}</span>
         </p>
+        {billingStatus === "pending_payment" && pendingPlan ? (
+          <p className="mb-2 text-xs font-semibold text-[#b60055]" aria-live="polite">
+            Pending activation: {pendingPlan}
+          </p>
+        ) : null}
         {statusMessage ? (
           <p className="mb-2 rounded-lg border border-[#9eaec7]/20 bg-white px-3 py-2 text-xs font-semibold text-[#4d5d73]" role="status">
             {statusMessage}
@@ -171,9 +402,25 @@ export default function BillingPage() {
         )}
       </MotionSection>
 
+      {isCheckingOut ? (
+        <MotionCard className="mb-8 rounded-3xl border border-[#b60055]/20 bg-white p-5 sm:p-6 md:p-7">
+          <h3 className="mb-3 text-lg font-bold text-[#203044]">Embedded Checkout</h3>
+          <p className="mb-4 text-sm font-medium text-[#4d5d73]">Choose a payment method below and submit payment without leaving this page.</p>
+          <div ref={checkoutContainerRef} id="xendit-checkout-container" className="min-h-24 rounded-xl border border-[#9eaec7]/20 bg-[#f7faff] p-3" />
+          <MotionButton
+            type="button"
+            onClick={handleSubmitEmbeddedCheckout}
+            className="maas-touch-target mt-4 w-full rounded-xl bg-[#203044] px-5 py-3 text-sm font-bold text-white"
+          >
+            Pay Now
+          </MotionButton>
+        </MotionCard>
+      ) : null}
+
       <MotionStaggerContainer className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:gap-6 xl:grid-cols-3 xl:gap-8">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.name;
+          const isPending = billingStatus === "pending_payment" && pendingPlan === plan.name;
           const isSubmitting = subscribingPlan === plan.name;
 
           return (
@@ -239,7 +486,7 @@ export default function BillingPage() {
                           : "bg-[#d2e4ff] text-[#203044]"
                   }`}
                 >
-                  {isCurrent ? "Current Plan" : isSubmitting ? "Opening Checkout..." : plan.cta}
+                  {isCurrent ? (isPending ? "Resume Payment" : "Current Plan") : isPending ? "Pending Activation" : isSubmitting ? "Initializing Checkout..." : plan.cta}
                 </MotionButton>
               </MotionCard>
             </MotionStaggerItem>
@@ -258,8 +505,8 @@ export default function BillingPage() {
             ) : null}
             <div className="space-y-3 sm:space-y-4">
               {[
-                { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "$29.00", strong: true },
-                { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "$29.00", strong: false },
+                { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "₱50.00", strong: true },
+                { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "₱50.00", strong: false },
               ].map((invoice, index) => (
                 <motion.div
                   key={invoice.id}

@@ -36,5 +36,29 @@ def get_xendit_secret_key() -> str:
     return _require_env("XENDIT_SECRET_KEY")
 
 
-def get_xendit_callback_token() -> str | None:
-    return _optional_env("XENDIT_CALLBACK_TOKEN")
+def get_xendit_callback_token() -> str:
+    return _require_env("XENDIT_CALLBACK_TOKEN")
+
+
+def get_xendit_components_origins() -> list[str]:
+    raw_origins = _optional_env("XENDIT_COMPONENTS_ORIGINS")
+    if raw_origins is None:
+        return ["https://localhost:3000"]
+
+    origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
+    if not origins:
+        return ["https://localhost:3000"]
+
+    normalized_origins: list[str] = []
+    for origin in origins:
+        if origin.startswith("https://"):
+            normalized_origins.append(origin)
+            continue
+
+        if origin.startswith("http://"):
+            normalized_origins.append(f"https://{origin[len('http://'):]}")
+            continue
+
+        normalized_origins.append(f"https://{origin}")
+
+    return normalized_origins

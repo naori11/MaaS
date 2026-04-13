@@ -150,6 +150,7 @@ pnpm test
 
 ```bash
 pnpm --filter web dev
+pnpm --filter web dev -- --experimental-https --hostname localhost --port 3000
 pnpm --filter web build
 pnpm --filter web lint
 ```

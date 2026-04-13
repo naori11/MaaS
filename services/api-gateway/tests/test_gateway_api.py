@@ -250,14 +250,16 @@ def test_billing_subscribe_requires_bearer_header():
     assert body["error"]["code"] == "unauthorized"
 
 
-def test_billing_webhook_bypasses_jwt():
+def test_billing_webhook_bypasses_jwt_and_forwards_callback_token():
     response = client.post(
         "/api/v1/billing/webhook/xendit",
+        headers={"x-callback-token": "callback-token-123"},
         json={"external_id": "upgrade_user_123_11111111-1111-1111-1111-111111111111", "status": "PAID"},
     )
 
     assert response.status_code == 200
     assert FakeAsyncClient.requests[0]["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit"
+    assert FakeAsyncClient.requests[0]["headers"]["x-callback-token"] == "callback-token-123"
 
 
 def test_billing_status_forwards_get_request_with_authorization():

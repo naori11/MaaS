@@ -11,7 +11,7 @@ export type BillingStatus = {
 };
 
 export type SubscribeResponse = {
-  invoice_url: string;
+  components_sdk_key: string;
 };
 
 function readCookie(name: string): string | null {

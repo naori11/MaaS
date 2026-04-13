@@ -85,6 +85,64 @@ The API Gateway is the unified entry point. In production/Docker, it is reached 
 ### Subscribe/Upgrade
 `POST /api/v1/billing/subscribe`
 - **Internal URL**: `http://billing:8000/api/v1/billing/subscribe`
+- **Headers**:
+  - `Authorization: Bearer <token>`
+  - `Content-Type: application/json`
+- **Request Payload**:
+  ```json
+  {
+    "plan_name": "Standard | Premium"
+  }
+  ```
+- **Response** (200 OK):
+  ```json
+  {
+    "components_sdk_key": "xnd_public_development_..."
+  }
+  ```
+- **Contract Notes**:
+  - Billing returns `components_sdk_key` for use with the Xendit Components embedded checkout; it no longer returns an `invoice_url`.
+  - Billing writes/updates subscription as `pending_payment` until webhook confirmation.
+  - If a pending intent for the same `plan_name` exists within the last 30 minutes, the existing `components_sdk_key` is reused (no new Xendit session created).
+  - `plan_name` outside `Standard|Premium` is rejected.
+
+### Xendit Webhook
+`POST /api/v1/billing/webhook/xendit`
+- **Internal URL**: `http://billing:8000/api/v1/billing/webhook/xendit`
+- **Auth Boundary**:
+  - Gateway bypasses JWT for this route.
+  - Billing enforces `x-callback-token` header against `XENDIT_CALLBACK_TOKEN`.
+- **Headers**:
+  - `Content-Type: application/json`
+  - `x-callback-token: <XENDIT_CALLBACK_TOKEN>`
+- **Request Payload** (Xendit `payment_session.completed` event):
+  ```json
+  {
+    "id": "ps_xendit_session_id",
+    "event": "payment_session.completed",
+    "reference_id": "upgrade_<user_id>_<uuid>",
+    "status": "PAID",
+    "paid_amount": 50,
+    "currency": "PHP",
+    "data": {
+      "reference_id": "upgrade_<user_id>_<uuid>",
+      "paid_amount": 50,
+      "currency": "PHP"
+    }
+  }
+  ```
+  > `event`, `data`, `paid_amount`, and `currency` may appear at the root level or nested inside `data`; the handler checks both locations. `id` (payment-session id) is used for session-id validation when the stored intent has a `xendit_invoice_id`. The plan to activate is derived from the stored invoice intent — no `paid_plan_name` field is needed.
+- **Response** (200 OK):
+  ```json
+  {
+    "received": true
+  }
+  ```
+- **Contract Notes**:
+  - If `event` is present but is not `payment_session.completed`, or if `status` is not `PAID` (legacy flow), the webhook is acknowledged with `{"received": true}` and no activation occurs.
+  - For completed payment sessions, billing validates the invoice intent (`reference_id`, payment-session `id` when present, paid amount, and currency) before activating the subscription.
+  - Re-delivered paid events for already-processed intents are idempotently acknowledged with `{"received": true}`.
+  - Validation/auth failures return gateway-normalized errors (typically 400/401).
 
 ---
 
