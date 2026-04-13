@@ -257,10 +257,14 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
         upstream_headers["Authorization"] = authorization
 
     if request.url.path == "/api/v1/billing/webhook/xendit":
-        # Log all incoming headers for debugging
+        # Log incoming headers for debugging, but redact sensitive values.
         import logging
         logger = logging.getLogger(__name__)
-        logger.info("Xendit webhook headers: %s", dict(request.headers))
+        redacted_headers = dict(request.headers)
+        for sensitive_header in ("x-callback-token", "authorization"):
+            if sensitive_header in redacted_headers:
+                redacted_headers[sensitive_header] = "[REDACTED]"
+        logger.info("Xendit webhook headers: %s", redacted_headers)
 
         callback_token = request.headers.get("x-callback-token")
         if callback_token:
