@@ -257,9 +257,16 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
         upstream_headers["Authorization"] = authorization
 
     if request.url.path == "/api/v1/billing/webhook/xendit":
+        # Log all incoming headers for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("Xendit webhook headers: %s", dict(request.headers))
+
         callback_token = request.headers.get("x-callback-token")
         if callback_token:
             upstream_headers["x-callback-token"] = callback_token
+        else:
+            logger.warning("x-callback-token header not found in webhook request")
 
     timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
 
