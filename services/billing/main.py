@@ -473,7 +473,7 @@ async def billing_webhook_xendit(
 
     paid_amount = _extract_paid_amount(paid_amount=amount_value, amount=amount_value) if amount_value is not None else None
 
-    # payload_currency is populated below; initialise to empty so the TEST MODE
+    # payload_currency is populated below; initialize to empty so the TEST MODE
     # block can set it and the subsequent extraction can detect that.
     payload_currency: str = ""
 
