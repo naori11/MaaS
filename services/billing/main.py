@@ -193,6 +193,18 @@ def _decode_user_id(authorization: str | None) -> str:
     return user_id
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """Return *dt* as a timezone-aware UTC datetime.
+
+    SQLite does not persist timezone information, so datetimes read back from
+    the database may be offset-naive even though they were stored from
+    ``datetime.now(UTC)``.  This helper treats naive datetimes as UTC so that
+    comparisons against offset-aware values work correctly for both SQLite
+    (tests) and PostgreSQL (production).
+    """
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
 def _create_xendit_payment_session(*, reference_id: str, amount: int, description: str) -> XenditPaymentSessionResult:
     try:
         secret_key = get_xendit_secret_key()
@@ -368,8 +380,7 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
             (
                 intent
                 for intent in pending_intents
-                if intent.plan_name == plan_name
-                and (intent.created_at if intent.created_at.tzinfo is not None else intent.created_at.replace(tzinfo=UTC)) >= reuse_cutoff
+                if intent.plan_name == plan_name and _as_utc(intent.created_at) >= reuse_cutoff
             ),
             None,
         )
