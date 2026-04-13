@@ -196,18 +196,20 @@ def test_subscribe_supersedes_existing_pending_intent_for_different_plan(monkeyp
     assert premium_intent.status == "pending_payment"
 
 
-def test_subscribe_reuses_same_plan_pending_intent_within_window(monkeypatch):
+def test_subscribe_supersedes_previous_pending_intent(monkeypatch):
+    """Test that subscribing always creates a fresh payment session and supersedes old intents."""
     user_id = f"user-{uuid4().hex}"
     token = _token_for_user(user_id)
-    call_count = {"count": 0}
+    calls = []
 
     def _fake_payment_session(*, reference_id: str, amount: int, description: str):
-        call_count["count"] += 1
+        call_num = len(calls) + 1
+        calls.append(call_num)
         assert amount == 50
         assert description == "Standard Plan Upgrade"
         return main.XenditPaymentSessionResult(
-            components_sdk_key="xnd_public_reuse_sdk_key",
-            payment_session_id="ps-test-reuse",
+            components_sdk_key=f"xnd_public_sdk_key_{call_num}",
+            payment_session_id=f"ps-test-{call_num}",
             currency="PHP",
         )
 
@@ -228,12 +230,13 @@ def test_subscribe_reuses_same_plan_pending_intent_within_window(monkeypatch):
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert first.json() == {"components_sdk_key": "xnd_public_reuse_sdk_key"}
-    assert second.json() == {"components_sdk_key": "xnd_public_reuse_sdk_key"}
-    assert call_count["count"] == 1
+    assert first.json() == {"components_sdk_key": "xnd_public_sdk_key_1"}
+    assert second.json() == {"components_sdk_key": "xnd_public_sdk_key_2"}
+    assert len(calls) == 2
 
-    assert len(intents) == 1
-    assert intents[0].status == "pending_payment"
+    assert len(intents) == 2
+    assert intents[0].status == "superseded"
+    assert intents[1].status == "pending_payment"
 
 
 def test_subscribe_creates_new_intent_when_pending_intent_is_stale(monkeypatch):
@@ -770,7 +773,11 @@ def test_subscribe_uses_configured_components_origins(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"components_sdk_key": "xnd_public_test_components_sdk_key"}
-    assert observed["body"]["components_configuration"]["origins"] == [
+    body = observed["body"]
+    assert isinstance(body, dict)
+    components_config = body["components_configuration"]
+    assert isinstance(components_config, dict)
+    assert components_config["origins"] == [
         "https://localhost:3000",
         "https://staging.example.com",
     ]
