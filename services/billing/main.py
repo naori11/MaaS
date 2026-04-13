@@ -265,11 +265,14 @@ def _create_xendit_payment_session(*, reference_id: str, amount: int, descriptio
             raise HTTPException(status_code=502, detail="Xendit payment session response missing components_sdk_key")
 
         payment_session_id = response_payload.get("id")
+        if not isinstance(payment_session_id, str) or not payment_session_id:
+            raise HTTPException(status_code=502, detail="Xendit payment session response missing id")
+
         payment_session_currency = response_payload.get("currency")
 
         return XenditPaymentSessionResult(
             components_sdk_key=components_sdk_key,
-            payment_session_id=payment_session_id if isinstance(payment_session_id, str) and payment_session_id else None,
+            payment_session_id=payment_session_id,
             currency=payment_session_currency if isinstance(payment_session_currency, str) and payment_session_currency else "PHP",
         )
     except HTTPException:
