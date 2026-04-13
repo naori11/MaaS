@@ -179,6 +179,7 @@ export default function BillingPage() {
     }
 
     let cancelled = false;
+    let pollingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const mountCheckout = async () => {
       try {
@@ -205,20 +206,60 @@ export default function BillingPage() {
 
         checkoutContainerRef.current.replaceChildren(picker);
 
-        instance.addEventListener("session-complete", async () => {
-          try {
-            const status = await getBillingStatus();
-            const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
-            setCurrentPlan(mappedPlan);
-            setBillingStatus(status.status);
-            setPendingPlan(status.status === "pending_payment" && mappedPlan !== "Hobby" ? mappedPlan : null);
-            setStatusMessage("Payment completed. Your plan is now active.");
-          } catch {
-            setStatusMessage("Payment completed. Refresh to confirm updated status.");
-          }
+        const pollForActiveStatus = async (maxAttempts = 10, intervalMs = 3000) => {
+          let attempts = 0;
 
-          setIsCheckingOut(false);
-          setSdkKey(null);
+          const poll = async (): Promise<void> => {
+            if (cancelled) {
+              return;
+            }
+
+            attempts++;
+
+            try {
+              const status = await getBillingStatus();
+              const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
+
+              if (status.status === "active") {
+                setCurrentPlan(mappedPlan);
+                setBillingStatus("active");
+                setPendingPlan(null);
+                setStatusMessage("Payment completed. Your plan is now active.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              if (attempts >= maxAttempts) {
+                setCurrentPlan(mappedPlan);
+                setBillingStatus(status.status);
+                setPendingPlan(status.status === "pending_payment" && mappedPlan !== "Hobby" ? mappedPlan : null);
+                setStatusMessage("Payment is processing. Please refresh the page to check your updated status.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              setStatusMessage(`Payment processing... (checking ${attempts}/${maxAttempts})`);
+              pollingTimeoutId = setTimeout(() => void poll(), intervalMs);
+            } catch (error) {
+              if (attempts >= maxAttempts) {
+                setStatusMessage("Payment completed. Refresh to confirm updated status.");
+                setIsCheckingOut(false);
+                setSdkKey(null);
+                return;
+              }
+
+              pollingTimeoutId = setTimeout(() => void poll(), intervalMs);
+            }
+          };
+
+          await poll();
+        };
+
+        instance.addEventListener("session-complete", () => {
+          setStatusMessage("Payment completed. Verifying status...");
+          void pollForActiveStatus();
         });
 
         instance.addEventListener("session-expired-or-canceled", () => {
@@ -227,6 +268,10 @@ export default function BillingPage() {
           setPendingPlan(null);
           setBillingStatus("active");
           setStatusMessage("Payment was canceled or expired. Please try again.");
+        });
+
+        instance.addEventListener("will-redirect", () => {
+          setStatusMessage("Completing payment...");
         });
       } catch (error) {
         if (cancelled) {
@@ -243,6 +288,9 @@ export default function BillingPage() {
 
     return () => {
       cancelled = true;
+      if (pollingTimeoutId) {
+        clearTimeout(pollingTimeoutId);
+      }
       if (checkoutContainerRef.current) {
         checkoutContainerRef.current.replaceChildren();
       }
