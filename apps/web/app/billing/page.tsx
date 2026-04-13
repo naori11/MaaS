@@ -90,20 +90,50 @@ function ensureXenditComponentsScript() {
   }
 
   return new Promise<void>((resolve, reject) => {
+    const createScript = () => {
+      const script = document.createElement("script");
+      script.src = XENDIT_COMPONENTS_SCRIPT_SRC;
+      script.async = true;
+      script.dataset.xenditComponentsState = "loading";
+      script.addEventListener(
+        "load",
+        () => {
+          script.dataset.xenditComponentsState = "loaded";
+          resolve();
+        },
+        { once: true },
+      );
+      script.addEventListener(
+        "error",
+        () => {
+          script.dataset.xenditComponentsState = "error";
+          reject(new Error("Unable to load Xendit Components SDK."));
+        },
+        { once: true },
+      );
+      document.head.appendChild(script);
+    };
+
     const existingScript = document.querySelector(`script[src="${XENDIT_COMPONENTS_SCRIPT_SRC}"]`) as HTMLScriptElement | null;
 
     if (existingScript) {
+      if ((window as XenditWindow).Xendit?.XenditComponents || existingScript.dataset.xenditComponentsState === "loaded") {
+        resolve();
+        return;
+      }
+
+      if (existingScript.dataset.xenditComponentsState === "error") {
+        existingScript.remove();
+        createScript();
+        return;
+      }
+
       existingScript.addEventListener("load", () => resolve(), { once: true });
       existingScript.addEventListener("error", () => reject(new Error("Unable to load Xendit Components SDK.")), { once: true });
       return;
     }
 
-    const script = document.createElement("script");
-    script.src = XENDIT_COMPONENTS_SCRIPT_SRC;
-    script.async = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Unable to load Xendit Components SDK.")), { once: true });
-    document.head.appendChild(script);
+    createScript();
   });
 }
 
