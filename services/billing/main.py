@@ -473,6 +473,10 @@ async def billing_webhook_xendit(
 
     paid_amount = _extract_paid_amount(paid_amount=amount_value, amount=amount_value) if amount_value is not None else None
 
+    # payload_currency is populated below; initialise to empty so the TEST MODE
+    # block can set it and the subsequent extraction can detect that.
+    payload_currency: str = ""
+
     # ⚠️ TEST MODE ONLY - REMOVE FOR PRODUCTION ⚠️
     # This block allows test webhooks (no amount) to activate subscriptions for testing purposes.
     # In production, this creates a security vulnerability where attackers could activate
@@ -495,10 +499,12 @@ async def billing_webhook_xendit(
                 return WebhookResponse(received=True)
     # ⚠️ END TEST MODE BLOCK ⚠️
 
-    # Extract currency from root level or nested data field
-    payload_currency = (payload.currency or "").upper()
-    if not payload_currency and payload.data:
-        payload_currency = (payload.data.get("currency") or "").upper()
+    # Extract currency from root level or nested data field only when it has not
+    # already been populated from the stored intent (TEST MODE path above).
+    if not payload_currency:
+        payload_currency = (payload.currency or "").upper()
+        if not payload_currency and payload.data:
+            payload_currency = (payload.data.get("currency") or "").upper()
 
     if not payload_currency:
         logger.error("Webhook rejected: missing currency")
