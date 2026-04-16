@@ -1,6 +1,7 @@
 # Managing Dependencies (python based backend)
 
 ## For python based APIs:
+
 - To create the requirements.txt file, use
   - `python -m venv venv` (create a virtual environment)
   - `pip install` the necessary dependencies
@@ -13,10 +14,12 @@
   - standard dependencies for testing in python is pytest and httpx
 
 # Creating Dockerfiles
+
 - Dockerfile notes are commented under each dockerfile within this project.
 - Always create a .dockerignore file. Put the files unnecessary for the deployed state such as unit tests, python caches, venv, .git and .gitignore files.
 
 ## Testing Dockerfiles (Buidling and Running docker images)
+
 - `dockerbuild -t 'image_name':'tag' .` | command for building the image based on dockerfile. Must run within the directory of the app.
 - `docker run -p 'host_port':'container_port' 'image_name'` | command for running the image. Add -d before image name to detach terminal.
 - `docker ps` / `docker ps -a` | command to list running/dead or exited containers
@@ -26,6 +29,7 @@
 - `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | opens a live terminal within the container
 
 # Docker Compose
+
 - Should be made after creating the initial services within the codebase (core business logic)
 - Docker compose file should grow alongside the codebase.
 - Dockerfile notes are commented under the docker-compose.yml file within this project.
@@ -34,32 +38,33 @@
 ---
 
 - For pulling images (such as database images):
-    - Env variables for database config would be set under the `environment:` tag, whichever is necessary.
-    - Use `volumes:` to define where to store data when containers or images is stopped or remove. 
-        - Right side part is always based on the image, then left is custom.
-    - When setting volumes, you have to redefine the volume tag along with the name of the volume that you set onto the end of the dockerfile. This tells the docker engine that this volume should persist independently of any container.
-        - `volumes:`
-            - `'volume_name':`  
+  - Env variables for database config would be set under the `environment:` tag, whichever is necessary.
+  - Use `volumes:` to define where to store data when containers or images is stopped or remove.
+    - Right side part is always based on the image, then left is custom.
+  - When setting volumes, you have to redefine the volume tag along with the name of the volume that you set onto the end of the dockerfile. This tells the docker engine that this volume should persist independently of any container.
+    - `volumes:`
+      - `'volume_name':`
 
 ---
 
 - For issues such as the database image loading slower than the services that requires it:
-    - instead of calling the image name normally (e.g. - postgres), do the following:
+  - instead of calling the image name normally (e.g. - postgres), do the following:
 
-    - for the postgres image itself:
-    - `healthcheck:`
-      - `test: ["shell":"command"]` # Command to test database status (depends on database image pulled)
-      - `interval:` # Number of times to test
-      - `timeout:`  # Time to consider as failed test
-      - `retries:`  # Number of times to retry command
+  - for the postgres image itself:
+  - `healthcheck:`
+    - `test: ["shell":"command"]` # Command to test database status (depends on database image pulled)
+    - `interval:` # Number of times to test
+    - `timeout:` # Time to consider as failed test
+    - `retries:` # Number of times to retry command
 
-    - for images that requires to connect to the postgres image:
-      - `postgres:` 
-        - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.
+  - for images that requires to connect to the postgres image:
+    - `postgres:`
+      - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.
 
 - For needing to run specific commands within the dedicated service/image, user `docker compose exec: 'service_name' 'command`
 
 # Terraform (IaC - Infrastructure as Code)
+
 - Made after creating the initial services cluster (the API.)
 - `terraform init` | command for preparing terraform directory (.terraform). Donwloads necessary provider plugins (defined under terraform/required_providers block)
 - `terraform plan` | command that shows terraform execution plan to the actual infrastructure platform
@@ -68,11 +73,13 @@
 - `terraform fmt` | formats your code to make it more clean
 
 # Azure Container Registry (ACR)
+
 - Basically storage of Docker Images to be deployed within the VM
 - Docker images are built within Github Actions (CI/CD) and pushed within ACR
 - admin_enabled is set as true to have a username and password credentials to put within Github Actions secrets
 
 # GitHub Actions
+
 - Ideal pipelines for development:
   - Pull Requests:
     - Linting and Formatting (Did the developer follow the team's style guide? (e.g., no messy spacing, correct variable casing). If it fails, block the PR.)
@@ -83,67 +90,111 @@
     - Build Docker Image and Push to ACR
     - Deployment to VM
 
+# Backend Concepts
+
+## API Gateways
+
+-
+
+## Reverse Proxy (Ingress Layer)
+
+- Serves as a protection for the API server (or any servers in general).
+
+- Purpose:
+  - Catch traffic on port 80
+  - Check if request is valid
+  - Terminates the SSL/TLS encryption (HTTP)
+  - Forwards traffic within docker's internal network to the dedicated API gateway.
+- Reverse proxies typically limits required ports of access under HTTP/HTTPS ports (80, 443), which is the universal standard for web traffic.
+  - This is to give users a clean url (no https://example.com:8080).
+- Also for security purposes, it lessens the way a potential attacker could access the servers by hiding the actual IP address of the website and web servers.
+- Commonly utilizes NGINX
+
+## NGINX
+
+- Commontly utilizes nginx as the following:
+  - Web Server (HTTP Request -> HTTP Response)
+  - Proxy Server - Used for:
+    - Load Balancing (One NGINX Server acts as a proxy server to distribute request to the rest of the servers.)
+    - Caching (Instead of creating multiple fetch request within a database, such as a static article, a proxy server would request it ones and stores it temporarily for cases of multiple requests.)
+    - Reverse Proxy (Serves as the only entry point for your servers by setting the default HTTP and HTTPS ports.)
+    - Encrypted Communication (Accept encrypted traffic, deny non encrypted requests) Terminates the SSL/TLS encryption (HTTP)
+    - Compression (Compresess request with large files included (such as videos) to lessen bandwidth usage and improve load times.)
+    - Segmentation (Send responses in chunks, usually in video streaming.)
+  - Modify configuration using nginx.conf file.
+  
+
+## Microservices Architecture
+
+-
+
+## SSL/TLS Certificates
 
 # Notes to Self
+
 ## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
-  - [ ] CIDR Notation
-  - [ ] IP Subnetting
-  - [ ] OSI Layer 
-    - [ ] Layer 4: TCP vs UDP
-    - [ ] Layer 7: HTTP, HTTPS, WebSockets
-  - [ ] Network Address Translation
-  - [ ] DNS
-  - [ ] Routing
+
+- [ ] CIDR Notation
+- [ ] IP Subnetting
+- [ ] OSI Layer
+  - [ ] Layer 4: TCP vs UDP
+  - [ ] Layer 7: HTTP, HTTPS, WebSockets
+- [ ] Network Address Translation
+- [ ] DNS
+- [ ] Routing
 
 ## Cloud Concepts
-  - [ ] Infrastructure as Code (IaC)
-  - [ ] State Files
-  - [ ] Shared Responsibility Model
-  - [ ] Virtual Machines (IaaS)
-  - [ ] App Services (PaaS)
-  - [ ] Container Registries (ACR)
-  - [ ] Kubernetes Services (AKS)
-  - [ ] Virtual Networks (VNet)
-  - [ ] Subnets
-  - [ ] Network Security Groups (NSG)
-  - [ ] Network Interfaces (NIC)
-  - [ ] Public IPs
-  - [ ] Load Balancers
-  - [ ] Application Gateways
-  - [ ] Managed Disks
-  - [ ] Blob Storage
-  - [ ] Managed Databases (SQL / PostgreSQL)
-  - [ ] Identity & Access Management (IAM)
-  - [ ] Role-Based Access Control (RBAC)
-  - [ ] Azure Entra ID
-  - [ ] Azure Key Vault
-  - [ ] Managed Identities
-  - [ ] Log Analytics / Azure Monitor
+
+- [x] Infrastructure as Code (IaC)
+- [ ] State Files
+- [ ] Shared Responsibility Model
+- [x] Virtual Machines (IaaS)
+- [ ] App Services (PaaS)
+- [ ] Container Registries (ACR)
+- [ ] Kubernetes Services (AKS)
+- [ ] Virtual Networks (VNet)
+- [ ] Subnets
+- [ ] Network Security Groups (NSG)
+- [ ] Network Interfaces (NIC)
+- [ ] Public IPs
+- [ ] Load Balancers
+- [ ] Application Gateways
+- [ ] Managed Disks
+- [ ] Blob Storage
+- [ ] Managed Databases (SQL / PostgreSQL)
+- [ ] Identity & Access Management (IAM)
+- [ ] Role-Based Access Control (RBAC)
+- [ ] Azure Entra ID
+- [ ] Azure Key Vault
+- [ ] Managed Identities
+- [ ] Log Analytics / Azure Monitor
 
 ## Linux Commands & Concepts
-  - [ ] Package Management (APT)
-  - [ ] GPG Keys & Keyrings
-  - [ ] Sources List (/etc/apt/sources.list.d/)
-  - [ ] File Permissions (chmod)
-  - [ ] Permission Bits (0755, a+r)
-  - [ ] File Ownership (chown)
-  - [ ] User & Group Management (usermod)
-  - [ ] Shell Redirection (|, >, >>)
-  - [ ] Environment Variables
-  - [ ] curl
-  - [ ] tee
-  - [ ] dpkg
-  - [ ] lsb_release
+
+- [ ] Package Management (APT)
+- [ ] GPG Keys & Keyrings
+- [ ] Sources List (/etc/apt/sources.list.d/)
+- [x] File Permissions (chmod)
+- [x] Permission Bits (0755, a+r)
+- [x] File Ownership (chown)
+- [ ] User & Group Management (usermod)
+- [ ] Shell Redirection (|, >, >>)
+- [x] Environment Variables
+- [ ] curl
+- [ ] tee
+- [ ] dpkg
+- [ ] lsb_release
 
 ## Additional DevOps & Backend Concepts
-  - [ ] CI/CD Pipelines
-  - [ ] GitHub Actions Workflows (.yml)
-  - [ ] Containerization (Docker)
-  - [ ] Container Orchestration
-  - [ ] Observability (Logging and Monitoring)
-  - [ ] Git Flow (rebase, cherry-pick)
-  - [ ] Reverse Proxies (Nginx, Caddy)
-  - [ ] SSL/TLS Certificates
-  - [ ] Microservices Architecture
-  - [ ] API Gateways
-  - [ ] Secret Management
+
+- [x] CI/CD Pipelines
+- [x] GitHub Actions Workflows (.yml)
+- [x] Containerization (Docker)
+- [ ] Container Orchestration
+- [ ] Observability (Logging and Monitoring)
+- [/] Git Flow (rebase, cherry-pick)
+- [/] Reverse Proxies (Nginx, Caddy)
+- [ ] SSL/TLS Certificates
+- [ ] Microservices Architecture
+- [x] API Gateways
+- [ ] Secret Management
