@@ -81,3 +81,4 @@ Thumbs.db
 .env.local
 .env.*.local
 .gitnexus
+graphify-out/

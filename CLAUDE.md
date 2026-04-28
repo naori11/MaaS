@@ -1,3 +1,102 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Big picture
+
+MaaS is a pnpm/turbo monorepo built around a public API gateway and a set of private FastAPI services.
+
+- `apps/web`: Next.js frontend using App Router, Tailwind, and framer-motion. Most of the frontend logic lives in route shells, layout/template components, and small API/session helpers under `app/_lib`.
+- `services/*`: Python microservices. The gateway is the only public HTTP surface; identity issues JWTs, billing handles Xendit subscription/webhook flows, ledger records transactions, and the math services each own one arithmetic operation.
+- `docker-compose.yml`: local cluster wiring, including Postgres and service-to-service networking.
+- `README.md` and `ARCHITECTURE.md`: system-level overview and intended service boundaries.
+
+Request flow to keep in mind:
+
+- Browser → API Gateway
+- Gateway enforces JWT and rate limits, then proxies to private services
+- Identity handles register/login/token issuance
+- Billing talks to Xendit and accepts webhook callbacks
+- Ledger stores transaction history asynchronously
+- Frontend code should call the gateway, not the internal services directly
+
+## Common commands
+
+Install workspace dependencies:
+
+```bash
+pnpm install
+```
+
+Root workspace commands:
+
+```bash
+pnpm dev
+pnpm build
+pnpm lint
+pnpm test
+```
+
+Local cluster:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f
+docker compose down
+docker compose down -v
+```
+
+Frontend (`apps/web`):
+
+```bash
+pnpm --filter web dev
+pnpm --filter web build
+pnpm --filter web lint
+pnpm --filter web test
+```
+
+Single frontend test:
+
+```bash
+pnpm --filter web test -- app/_components/dashboard-shell.test.tsx -t "name"
+```
+
+Python services (`services/api-gateway`, `services/identity`, `services/billing`, `services/ledger`, and the math services):
+
+```bash
+pnpm --filter billing dev
+pnpm --filter billing lint
+pnpm --filter billing test
+```
+
+Single Python test:
+
+```bash
+cd services/billing && pytest tests/test_billing_api.py::test_name
+```
+
+You can also pass pytest selectors through the pnpm script:
+
+```bash
+pnpm --filter billing test -- tests/test_billing_api.py::test_name
+```
+
+API docs when the stack is running:
+
+```text
+http://localhost:4000/docs
+```
+
+## Architecture notes
+
+- The gateway is the only public HTTP entrypoint in the local stack. Internal services stay private behind Docker DNS.
+- Authentication is centralized at the gateway instead of being duplicated in every worker.
+- Billing has a webhook path that intentionally bypasses JWT checks so Xendit callbacks can reach the service.
+- Each math worker is isolated per operation; treat them as independent deployable units.
+- The web app is mostly shell/navigation/layout code plus thin API adapters and cookie/session helpers.
+- Service configuration is env-driven and usually flows through per-service `config.py` helpers.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
@@ -99,3 +198,13 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
