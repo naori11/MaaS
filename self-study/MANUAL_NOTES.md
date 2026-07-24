@@ -72,6 +72,13 @@
 - `terraform destroy` | removes everything that is defined within the terraform configuration
 - `terraform fmt` | formats your code to make it more clean
 
+# SSH Keygen 
+
+- `sh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
+- When command is run, it generates an id_rsa.pub (public key) and id_rsa (private key)
+- Layman concept: id_rsa.pub is the lock and id_rsa is your key to the lock. You provide the lock in a VM instance. 
+- When you try to connect via SSH, your local machine uses the key to verify the signature based on the lock provided. Once verified, you will be given access to the VM without entering a password.
+- 
 # Azure Container Registry (ACR)
 
 - Basically storage of Docker Images to be deployed within the VM

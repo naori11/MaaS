@@ -23,7 +23,8 @@ provider "azurerm" {
   # This setting tells Terraform to skip the automatic registration of Azure resource providers.
   # Since we're only using a few core services (like Resource Groups and Virtual Networks), we can skip registering all the other providers that we won't be using, which can speed up the deployment process.
   # Also, we are only using an Azure for Students subscription, which has some limitations and might not allow certain providers to be registered.
-  skip_provider_registration = "true"
+  # But since we are using a fresh subscription, we set this to false (or remove it) so that Terraform can automatically register the namespaces (e.g. Microsoft.Network, Microsoft.Compute) required by our resources.
+  skip_provider_registration = false
 }
 
 # Define a resource group in Azure where all the resources for the MAAS cluster will be created.
