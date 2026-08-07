@@ -6,13 +6,13 @@
 > **Goal:** Rebuild core networking fundamentals, subnetting calculations, and Cisco Packet Tracer confidence before moving to system administration.
 
 ### Action Tasks
-- [ ] **IP Addressing & Subnetting Reset**
-  - [ ] Re-learn CIDR notation (`/24`, `/28`, `/16`).
-  - [ ] Practice calculating Network ID, Broadcast Address, First Usable IP, Last Usable IP, and Subnet Mask manually.
-  - [ ] Complete subnetting drills (e.g., dividing `192.168.1.0/24` into 4 equal subnets of `/26`).
+- [x] **IP Addressing & Subnetting Reset**
+  - [x] Re-learn CIDR notation (`/24`, `/28`, `/16`).
+  - [x] Practice calculating Network ID, Broadcast Address, First Usable IP, Last Usable IP, and Subnet Mask manually.
+  - [x] Complete subnetting drills (e.g., dividing `192.168.1.0/24` into 4 equal subnets of `/26`).
 - [ ] **Packet Tracer Micro-Lab #1: Basic LAN & Subnetting**
-  - [ ] Set up 2 separate subnets using a single router (e.g., Subnet A: `10.0.1.0/24`, Subnet B: `10.0.2.0/24`).
-  - [ ] Connect PCs to switches, assign static IPs, configure default gateways, and verify `ping` end-to-end.
+  - [x] Set up 2 separate subnets using a single router (e.g., Subnet A: `10.0.1.0/24`, Subnet B: `10.0.2.0/24`).
+  - [x] Connect PCs to switches, assign static IPs, configure default gateways, and verify `ping` end-to-end.
 - [ ] **Packet Tracer Micro-Lab #2: NAT & Routing**
   - [ ] Configure static/dynamic routing between 2 routers.
   - [ ] Implement NAT (Network Address Translation) to map private IPs to public IP addresses.
