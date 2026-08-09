@@ -27,8 +27,8 @@
 
 ### Action Tasks
 - [ ] **Directory Navigation & File Operations**
-  - [ ] Practice essential file commands: `ls -la`, `cd`, `mkdir -p`, `cp -r`, `mv`, `rm -rf`.
-  - [ ] Master terminal text processing: `cat`, `less`, `head`, `tail -f`, `grep`, and `find`.
+  - [x] Practice essential file commands: `ls -la`, `cd`, `mkdir -p`, `cp -r`, `mv`, `rm -rf`.
+  - [x] Master terminal text processing: `cat`, `less`, `head`, `tail -f`, `grep`, and `find`.
   - [ ] Use shell redirection operators (`|`, `>`, `>>`, `tee`) to filter outputs and log to files.
 - [ ] **Permissions & Ownership**
   - [ ] Practice `chmod` in both absolute mode (`chmod 755`) and symbolic mode (`chmod +x script.sh`).
