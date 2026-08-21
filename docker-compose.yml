@@ -1,13 +1,29 @@
 services:
+  # ---------------------------------------------
+  # Edge Proxy (Entry Point for Clients)
+  # ---------------------------------------------
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api-gateway
 
   # ---------------------------------------------
-  # API Gateway (Entry Point for Clients)
+  # API Gateway (Internal Router)
   # ---------------------------------------------
 
   api-gateway: # Name of the service
     build: ./services/api-gateway # Directory containing the Dockerfile for the API Gateway service
-    ports:
-      - "4000:8000" # Expose port 8000 of the container to port 4000 on the host
+    # Since the API Gateway is not intended to be accessed directly from outside the Docker network,
+    # And the Nginx proxy is the entry point for clients,
+    # we do not expose it to the host via a port.
+    # ports:
+    #   - "4000:8000" # Expose port 8000 of the container to port 4000 on the host
     environment: # Define environment variables for the API Gateway to know how to reach the operation services
       # Core business logic service URLs
       - IDENTITY_SERVICE_URL=http://identity:8000
@@ -72,9 +88,9 @@ services:
 
   ledger:
     build: ./services/ledger # Directory containing the Dockerfile for the ledger service
-    # Port is commented out because the ledger service is not intended to be accessed directly from outside the Docker network. 
+    # Port is commented out because the ledger service is not intended to be accessed directly from outside the Docker network.
     # It will be accessed by the API Gateway and other services internally.
-    # ports: 
+    # ports:
     #   - "8021:8000" # Expose port 8000 of the container to port 8021 on the host (optional, only needed for direct access to the ledger service)
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ledger_db
