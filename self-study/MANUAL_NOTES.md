@@ -72,6 +72,34 @@
 - `terraform destroy` | removes everything that is defined within the terraform configuration
 - `terraform fmt` | formats your code to make it more clean
 
+# Terraform State Management
+
+- Terraform state (.tfstate) file is a JSON file that tracks the resources created by Terraform the last time the `terraform apply` command was run.
+- It is used by Terraform to keep track of the resources (as a lookup table) it has created and to ensure that the infrastructure matches the desired state defined in the code.
+
+
+Scenario 1: If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run terraform plan? Why?
+
+- Terraform will perform a background refresh by checking the tfstate file for the existing resources, then calls Azure API for each resource to verify its existence.
+- Then terraform will detect that the resource no longer exists.
+- If the resource is still within the .tf file, the next time that terraform apply is run, it will attempt to create the resource again.
+
+Scenario 2: If you delete your local terraform.tfstate file, but the Azure resources still exist, what happens the next time you run terraform apply?
+
+- Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
+- But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests. 
+- It does not recreate the state file, so the next time you run terraform apply, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using terraform import.
+
+If Developer A and Developer B both run terraform apply from their own laptops at the exact same time using local state, what is the risk to the Azure environment?
+- Multiple API calls to create resources will be sent and could cause conflicts, duplicate resources, and broken tfstate files for both ends.
+
+Why can’t you just commit terraform.tfstate to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).
+- Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc.
+
+# Azure Blob
+- Azure Blob Storage is a service that allows you to store unstructured data such as logs, backups, and media files.
+- Has a Blob Lease feature that allows you to lock a file (a blob) when it is being used by a resource, such as terraform's state files to prevent other resources from modifying it until it is done.
+
 # SSH Keygen 
 
 - `sh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
@@ -141,7 +169,7 @@
 
 ## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
 
-- [ ] CIDR Notation
+- [x] CIDR Notation
 - [ ] IP Subnetting
 - [ ] OSI Layer
   - [ ] Layer 4: TCP vs UDP
