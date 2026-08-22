@@ -9,22 +9,22 @@
   - or to automatically fetch the necessary dependencies (static code analysis), use `pipreqs` | `pip install pipreqs` | `pipreqs . --force`
 
 - To separate test file dependencies (for github actions unit test)
-  - create a separate requirements-dev.txt file
+  - create a separate `requirements-dev.txt` file
   - put dependencies mainly for testing only (pytest, httpx)
   - standard dependencies for testing in python is pytest and httpx
 
 # Creating Dockerfiles
 
 - Dockerfile notes are commented under each dockerfile within this project.
-- Always create a .dockerignore file. Put the files unnecessary for the deployed state such as unit tests, python caches, venv, .git and .gitignore files.
+- Always create a `.dockerignore` file. Put the files unnecessary for the deployed state such as unit tests, python caches, venv, `.git` and `.gitignore` files.
 
 ## Testing Dockerfiles (Buidling and Running docker images)
 
-- `dockerbuild -t 'image_name':'tag' .` | command for building the image based on dockerfile. Must run within the directory of the app.
-- `docker run -p 'host_port':'container_port' 'image_name'` | command for running the image. Add -d before image name to detach terminal.
+- `docker build -t 'image_name':'tag' .` | command for building the image based on dockerfile. Must run within the directory of the app.
+- `docker run -p 'host_port':'container_port' 'image_name'` | command for running the image. Add `-d` before image name to detach terminal.
 - `docker ps` / `docker ps -a` | command to list running/dead or exited containers
 - `docker stop 'container_id'` | shuts down a running container
-- `docker rm  'container_id'` | removes the container build
+- `docker rm 'container_id'` | removes the container build
 - `docker system prune` | removes every image/build that are unused
 - `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | opens a live terminal within the container
 
@@ -32,8 +32,8 @@
 
 - Should be made after creating the initial services within the codebase (core business logic)
 - Docker compose file should grow alongside the codebase.
-- Dockerfile notes are commented under the docker-compose.yml file within this project.
-- For environment variable injection for container routing, use the service name within the docker network (ex. http://math-add:8000)
+- Dockerfile notes are commented under the `docker-compose.yml` file within this project.
+- For environment variable injection for container routing, use the service name within the docker network (ex. `http://math-add:8000`)
 
 ---
 
@@ -51,22 +51,26 @@
   - instead of calling the image name normally (e.g. - postgres), do the following:
 
   - for the postgres image itself:
-  - `healthcheck:`
-    - `test: ["shell":"command"]` # Command to test database status (depends on database image pulled)
-    - `interval:` # Number of times to test
-    - `timeout:` # Time to consider as failed test
-    - `retries:` # Number of times to retry command
+    ```yaml
+    healthcheck:
+      test: ["shell", "command"] # Command to test database status (depends on database image pulled)
+      interval: # Number of times to test
+      timeout: # Time to consider as failed test
+      retries: # Number of times to retry command
+    ```
 
   - for images that requires to connect to the postgres image:
-    - `postgres:`
-      - `condition: service_healthy` # Make sure that the image is healthy before spinning up the service.
+    ```yaml
+    postgres:
+      condition: service_healthy # Make sure that the image is healthy before spinning up the service.
+    ```
 
-- For needing to run specific commands within the dedicated service/image, user `docker compose exec: 'service_name' 'command`
+- For needing to run specific commands within the dedicated service/image, use `docker compose exec 'service_name' 'command'`
 
 # Terraform (IaC - Infrastructure as Code)
 
 - Made after creating the initial services cluster (the API.)
-- `terraform init` | command for preparing terraform directory (.terraform). Donwloads necessary provider plugins (defined under terraform/required_providers block)
+- `terraform init` | command for preparing terraform directory (`.terraform`). Donwloads necessary provider plugins (defined under `terraform/required_providers` block)
 - `terraform plan` | command that shows terraform execution plan to the actual infrastructure platform
 - `terraform apply` | applies the IaC by spinning up the resources defined within the code along with its configurations
 - `terraform destroy` | removes everything that is defined within the terraform configuration
@@ -74,27 +78,38 @@
 
 # Terraform State Management
 
-- Terraform state (.tfstate) file is a JSON file that tracks the resources created by Terraform the last time the `terraform apply` command was run.
+- Terraform state (`.tfstate`) file is a JSON file that tracks the resources created by Terraform the last time the `terraform apply` command was run.
 - It is used by Terraform to keep track of the resources (as a lookup table) it has created and to ensure that the infrastructure matches the desired state defined in the code.
 
 
-Scenario 1: If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run terraform plan? Why?
+**Scenario 1:** If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run `terraform plan`? Why?
 
-- Terraform will perform a background refresh by checking the tfstate file for the existing resources, then calls Azure API for each resource to verify its existence.
+- Terraform will perform a background refresh by checking the `.tfstate` file for the existing resources, then calls Azure API for each resource to verify its existence.
 - Then terraform will detect that the resource no longer exists.
-- If the resource is still within the .tf file, the next time that terraform apply is run, it will attempt to create the resource again.
+- If the resource is still within the `.tf` file, the next time that `terraform apply` is run, it will attempt to create the resource again.
 
-Scenario 2: If you delete your local terraform.tfstate file, but the Azure resources still exist, what happens the next time you run terraform apply?
+**Scenario 2:** If you delete your local `terraform.tfstate` file, but the Azure resources still exist, what happens the next time you run `terraform apply`?
 
 - Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
 - But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests. 
-- It does not recreate the state file, so the next time you run terraform apply, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using terraform import.
+- It does not recreate the state file, so the next time you run `terraform apply`, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using `terraform import`.
 
-If Developer A and Developer B both run terraform apply from their own laptops at the exact same time using local state, what is the risk to the Azure environment?
+**If Developer A and Developer B both run `terraform apply` from their own laptops at the exact same time using local state, what is the risk to the Azure environment?**
 - Multiple API calls to create resources will be sent and could cause conflicts, duplicate resources, and broken tfstate files for both ends.
 
-Why can’t you just commit terraform.tfstate to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).
-- Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc.
+**Why can’t you just commit `terraform.tfstate` to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).**
+- Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc. On which, everything is stored as plaintext, and Azure Blob storage is the one encrypthing it.
+
+**How does Terraform provision the resource needed for the remote state file if it does not exist yet?**
+- You provision it manually using the Azure portal or CLI.
+- Through bootsrapping. Create a separate Terraform configuration file first in a separate directory which provisions the storage account and container for the remote state file. Then you can run `terraform init` in the main directory to use the remote state file.
+
+**Key CLI commands**
+- `terraform state list`: Lists all resources in the state file.
+- `terraform state show <resource>`: Shows the details of a specific resource in the state file.
+- `terraform import <resource> <id>`: Imports an existing resource from Azure into the state file in cases of people adding resources manually.
+- `terraform state rm <resource>`: Removes a resource from the state file without deleting it from Azure.
+- `terraform state mv <old_resource> <new_resource>`: Renames a resource in the state file.
 
 # Azure Blob
 - Azure Blob Storage is a service that allows you to store unstructured data such as logs, backups, and media files.
@@ -102,16 +117,16 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
 
 # SSH Keygen 
 
-- `sh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
-- When command is run, it generates an id_rsa.pub (public key) and id_rsa (private key)
-- Layman concept: id_rsa.pub is the lock and id_rsa is your key to the lock. You provide the lock in a VM instance. 
+- `ssh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
+- When command is run, it generates an `id_rsa.pub` (public key) and `id_rsa` (private key)
+- Layman concept: `id_rsa.pub` is the lock and `id_rsa` is your key to the lock. You provide the lock in a VM instance. 
 - When you try to connect via SSH, your local machine uses the key to verify the signature based on the lock provided. Once verified, you will be given access to the VM without entering a password.
-- 
+
 # Azure Container Registry (ACR)
 
 - Basically storage of Docker Images to be deployed within the VM
 - Docker images are built within Github Actions (CI/CD) and pushed within ACR
-- admin_enabled is set as true to have a username and password credentials to put within Github Actions secrets
+- `admin_enabled` is set as true to have a username and password credentials to put within Github Actions secrets
 
 # GitHub Actions
 
@@ -141,13 +156,13 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
   - Terminates the SSL/TLS encryption (HTTP)
   - Forwards traffic within docker's internal network to the dedicated API gateway.
 - Reverse proxies typically limits required ports of access under HTTP/HTTPS ports (80, 443), which is the universal standard for web traffic.
-  - This is to give users a clean url (no https://example.com:8080).
+  - This is to give users a clean url (no `https://example.com:8080`).
 - Also for security purposes, it lessens the way a potential attacker could access the servers by hiding the actual IP address of the website and web servers.
 - Commonly utilizes NGINX
 
 ## NGINX
 
-- Commontly utilizes nginx as the following:
+- Commonly utilizes nginx as the following:
   - Web Server (HTTP Request -> HTTP Response)
   - Proxy Server - Used for:
     - Load Balancing (One NGINX Server acts as a proxy server to distribute request to the rest of the servers.)
@@ -156,7 +171,7 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
     - Encrypted Communication (Accept encrypted traffic, deny non encrypted requests) Terminates the SSL/TLS encryption (HTTP)
     - Compression (Compresess request with large files included (such as videos) to lessen bandwidth usage and improve load times.)
     - Segmentation (Send responses in chunks, usually in video streaming.)
-  - Modify configuration using nginx.conf file.
+  - Modify configuration using `nginx.conf` file.
   
 
 ## Microservices Architecture
@@ -206,14 +221,14 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
 
 ## Linux Commands & Concepts
 
-- [ ] Package Management (APT)
+- [x] Package Management (APT)
 - [ ] GPG Keys & Keyrings
-- [ ] Sources List (/etc/apt/sources.list.d/)
-- [x] File Permissions (chmod)
-- [x] Permission Bits (0755, a+r)
-- [x] File Ownership (chown)
-- [ ] User & Group Management (usermod)
-- [ ] Shell Redirection (|, >, >>)
+- [ ] Sources List (`/etc/apt/sources.list.d/`)
+- [x] File Permissions (`chmod`)
+- [x] Permission Bits (`0755`, `a+r`)
+- [x] File Ownership (`chown`)
+- [x] User & Group Management (`usermod`)
+- [ ] Shell Redirection (`|`, `>`, `>>`)
 - [x] Environment Variables
 - [ ] curl
 - [ ] tee
@@ -223,7 +238,7 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
 ## Additional DevOps & Backend Concepts
 
 - [x] CI/CD Pipelines
-- [x] GitHub Actions Workflows (.yml)
+- [x] GitHub Actions Workflows (`.yml`)
 - [x] Containerization (Docker)
 - [ ] Container Orchestration
 - [ ] Observability (Logging and Monitoring)
@@ -233,3 +248,21 @@ Why can’t you just commit terraform.tfstate to Git to solve the collaboration 
 - [ ] Microservices Architecture
 - [x] API Gateways
 - [ ] Secret Management
+
+### Career Advice & Transition Suggestions
+
+To transition from backend to DevOps/Cloud in the long run:
+
+1. Containerize Existing Projects: Add a Dockerfile and docker-compose.yml to your
+Coffeetory POS application. Document this in the repository. Containerization is
+the bedrock of modern DevOps.
+2. Add Observability / Telemetry: For KidSync or Coffeetory, set up basic telemetry.
+Even simple setups like exporting application logs to a CloudWatch/Azure Log
+Analytics workspace or hooking up Prometheus/Grafana will show you understand
+operations.
+3. Build a Multi-Tier Cloud Project: Create a small, new deployment using Terraform.
+For example, deploy a containerized backend on AWS ECS or Azure Container Apps,
+behind a load balancer, talking to a managed cloud database.
+4. Certifications (Optional but helpful for resume scanning): AWS Certified Cloud
+Practitioner / Solutions Architect Associate, or Microsoft Azure Fundamentals (AZ-
+900) / Administrator (AZ-104).
