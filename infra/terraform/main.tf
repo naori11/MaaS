@@ -8,12 +8,22 @@ terraform {
   required_providers {
     # Official name for the Azure Resource Manger provider for Terraform.
     azurerm = {
-      # Provide the source for the provider and the version to use from the official registry of HashiCorp. 
+      # Provide the source for the provider and the version to use from the official registry of HashiCorp.
       # The version is set to 3.0 or higher but less than 4.0.
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
   }
+
+  # Backend configuration for storing Terraform state in Azure Blob Storage
+  # This block specifically uploads the tfstate file in an azure blob storage container.
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "maastfstate1" # Use the exact name from Step 1
+    container_name       = "tfstate"
+    key                  = "prod.maas.tfstate" # Name of the state file in the blob
+  }
+
 }
 
 # Configuration for the Azure Resource Manager provider fetched from the official registry.
@@ -28,7 +38,7 @@ provider "azurerm" {
 }
 
 # Define a resource group in Azure where all the resources for the MAAS cluster will be created.
-# "azurerm_resource_group" is the resource type for creating a resource group in Azure, provided by the azurerm provider.   
+# "azurerm_resource_group" is the resource type for creating a resource group in Azure, provided by the azurerm provider.
 # "maas_rg" is the name of this specific resource instance, which can be referenced later within the code.
 resource "azurerm_resource_group" "maas_rg" {
   name     = "rg-maas-cluster" # The name of the resource group to be created in Azure.
@@ -42,14 +52,14 @@ resource "azurerm_resource_group" "maas_rg" {
 
 # DEPENDENCY GRAPH IN ACTION:
 # Notice we do NOT hardcode the location or resource group name in these resources.
-# We dynamically reference the exact box we created earlier. 
+# We dynamically reference the exact box we created earlier.
 # This tells Terraform: "Don't build this until the Resource Group exists."
 
 # Define a virtual network in Azure for the MAAS cluster.
 # "azurerm_virtual_network" is the resource type for creating a virtual network in Azure, provided by the azurerm provider.
 resource "azurerm_virtual_network" "maas_vnet" {
   name = "vnet-maas-cluster" # The name of the virtual network to be created in Azure.
-  # The address space for the virtual network, which defines the range of IP addresses that can be used within this network. 
+  # The address space for the virtual network, which defines the range of IP addresses that can be used within this network.
   # In this case, it's set to "10.0.0.0/16".
   # Definitely gonna need to study networking concepts and subnetting to understand this better.
   address_space       = ["10.0.0.0/16"]
@@ -62,8 +72,8 @@ resource "azurerm_virtual_network" "maas_vnet" {
 # "azurerm_subnet" is the resource type for creating a subnet in Azure, provided by the azurerm provider.
 resource "azurerm_subnet" "maas_subnet" {
   name = "subnet-maas-cluster" # The name of the subnet to be created within the virtual network.
-  # The address prefix for the subnet, which defines the range of IP addresses that can be used within this subnet. 
-  # In this case, it's set to "10.0.0.0/24". 
+  # The address prefix for the subnet, which defines the range of IP addresses that can be used within this subnet.
+  # In this case, it's set to "10.0.0.0/24".
   address_prefixes = ["10.0.0.0/24"]
 
   # DEPENDENCY GRAPH IN ACTION:
@@ -100,7 +110,7 @@ resource "azurerm_network_security_group" "maas_nsg" {
 
   # Define security rules for the network security group.
 
-  # RULE 1: Allow SSH 
+  # RULE 1: Allow SSH
   # This rule allows incoming SSH traffic to the resources associated with this NSG, which is essential for managing the MAAS cluster remotely via SSH.
   # Github Actions will also use this port to connect to the MAAS cluster and run commands on the nodes for provisioning and management.
   security_rule {
@@ -167,13 +177,13 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
   admin_username      = "azureuser"                             # The username for the administrator account on the virtual machine. This is the account that will be used to log in to the VM and perform administrative tasks. In production, it's recommended to use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables, instead of hardcoding them in the code.
   # admin_password      = "P@ssw0rd1234!"                         # In production, use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables.
 
-  # Attach the network interface to the virtual machine. 
+  # Attach the network interface to the virtual machine.
   # This tells Azure which network interface (and therefore which subnet and public IP) to use for this VM.
   network_interface_ids = [
     azurerm_network_interface.maas_nic.id
   ]
 
-  # SSH key-based authentication for the virtual machine. 
+  # SSH key-based authentication for the virtual machine.
   # This is a more secure method than using passwords, as it relies on cryptographic keys instead of shared secrets.
   admin_ssh_key {
     username   = "azureuser"
@@ -186,7 +196,7 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
     storage_account_type = "Standard_LRS"
   }
 
-  # Configure the source image for the virtual machine. This specifies which operating system image to use when creating the VM. 
+  # Configure the source image for the virtual machine. This specifies which operating system image to use when creating the VM.
   # In this case, we're using a specific Ubuntu Server 22.04 LTS image from the Azure Marketplace.
   source_image_reference {
     publisher = "Canonical"
@@ -204,7 +214,7 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
 
     # Install necessary packages to prepare the system for Docker installation, including:
     # - ca-certificates: Ensures that the system can securely download packages over HTTPS.
-    # - curl: A command-line tool for transferring data with URLs, used to download the Docker GPG key. 
+    # - curl: A command-line tool for transferring data with URLs, used to download the Docker GPG key.
     # - gnupg: A tool for managing GPG keys, required to add the Docker GPG key to the system's keyring.
     sudo apt-get install -y ca-certificates curl gnupg
 
@@ -212,17 +222,17 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
     # This allows the system to securely download and install Docker packages from the official Docker repository.
     sudo install -m 0755 -d /etc/apt/keyrings
 
-    # The "curl" command is used to download the Docker GPG key from the official Docker repository. 
+    # The "curl" command is used to download the Docker GPG key from the official Docker repository.
     # The key is then processed with "gpg --dearmor" to convert it into a format suitable for use as an APT keyring, and saved to "/etc/apt/keyrings/docker.gpg".
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    
+
     # Set the permissions on the Docker GPG keyring file to ensure that it is readable by all users, which is necessary for the APT package manager to verify the authenticity of packages from the Docker repository.
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
     # The "echo" command is used to add the Docker APT repository to the system's package sources.
     # It constructs a line that specifies the repository URL, the distribution (based on the current Ubuntu release), and the component (stable), and writes this line to a new file in "/etc/apt/sources.list.d/docker.list".
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
+
     # Run the update command again to refresh the package lists, now including the Docker repository, so that the system is aware of the latest Docker packages available for installation.
     sudo apt-get update -y
 
