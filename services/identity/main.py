@@ -172,8 +172,15 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(_, __):
-    return JSONResponse(status_code=400, content={"detail": "Malformed payload"})
+async def request_validation_exception_handler(_, exc: RequestValidationError):
+    errors = exc.errors()
+    message = "Malformed payload"
+    if errors:
+        err = errors[0]
+        field = ".".join(str(loc) for loc in err.get("loc", []) if loc != "body")
+        msg = err.get("msg", message)
+        message = f"{field}: {msg}" if field else msg
+    return JSONResponse(status_code=400, content={"error": {"message": message}})
 
 
 @app.post("/api/v1/auth/register", response_model=RegisterResponse, status_code=201)

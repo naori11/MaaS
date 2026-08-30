@@ -30,6 +30,11 @@ function LoginPageContent() {
       return;
     }
 
+    if (trimmedPassword.length < 8) {
+      setError("Access Cipher must be at least 8 characters long.");
+      return;
+    }
+
     setError("");
     setIsSubmitting(true);
 

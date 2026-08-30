@@ -143,4 +143,4 @@ def test_register_rejects_malformed_payload(client):
     )
 
     assert response.status_code == 400
-    assert response.json() == {"detail": "Malformed payload"}
+    assert response.json() == {"error": {"message": "password: String should have at least 8 characters"}}
