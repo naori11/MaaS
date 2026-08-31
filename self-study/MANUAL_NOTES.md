@@ -115,6 +115,23 @@
 - Azure Blob Storage is a service that allows you to store unstructured data such as logs, backups, and media files.
 - Has a Blob Lease feature that allows you to lock a file (a blob) when it is being used by a resource, such as terraform's state files to prevent other resources from modifying it until it is done.
 
+# Azure Identity
+- Identities assigned to entities such as human identities, or pipelines/services.
+- It is used by Azure services to authenticate and authorize access to resources.
+
+- **Traditional Active Directory vs Microsoft Entra ID**
+  - Traditional Active Directory is on premises, while Microsoft Entra ID (formerly Azure Active Directory) is cloud-based.
+
+- **App Registration vs Enterprise Application**
+  - App registration is mainly for providing credentials for a specific app to access Azure resources. It handles `Authentication`.
+  - App registration holds the Application ID and Client Secret.
+  - Enterprise application is for assigning RBAC permissions to a group of users or service principals, such as the App Registration itself. It handles `Authorization`.
+  - Enterprise application holds the actual RBAC roles and sign in logs. 
+
+- **Service Principal**
+  - Service principal is a type of identity that represents an app or service, not a user.
+  - It is used to authenticate and authorize access to Azure resources on behalf of the app or service, such as a VM instance, CI/CD pipeline runners, or other Azure services.
+
 # SSH Keygen 
 
 - `ssh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
