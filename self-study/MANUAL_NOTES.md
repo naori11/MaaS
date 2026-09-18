@@ -1,6 +1,50 @@
-# Managing Dependencies (python based backend)
+# Cloud & DevOps Manual Notes
 
-## For python based APIs:
+---
+
+## 📑 Table of Contents
+
+- [Part 1: Environment & Dependency Management](#part-1-environment--dependency-management)
+  - [Managing Dependencies (python based backend)](#managing-dependencies-python-based-backend)
+- [Part 2: Containerization & Local Orchestration (Docker)](#part-2-containerization--local-orchestration-docker)
+  - [Creating Dockerfiles](#creating-dockerfiles)
+  - [Testing Dockerfiles (Building and Running docker images)](#testing-dockerfiles-building-and-running-docker-images)
+  - [Docker Compose](#docker-compose)
+- [Part 3: Infrastructure as Code (Terraform)](#part-3-infrastructure-as-code-terraform)
+  - [Terraform (IaC - Infrastructure as Code)](#terraform-iac---infrastructure-as-code)
+  - [Terraform State Management](#terraform-state-management)
+  - [Key CLI commands](#key-cli-commands)
+- [Part 4: Cloud Platform & Identity Management (Azure)](#part-4-cloud-platform--identity-management-azure)
+  - [Azure Blob](#azure-blob)
+  - [Azure Identity](#azure-identity)
+  - [SSH Keygen](#ssh-keygen)
+- [Part 5: CI/CD Pipelines & Automation (GitHub Actions)](#part-5-cicd-pipelines--automation-github-actions)
+  - [Azure Container Registry (ACR)](#azure-container-registry-acr)
+  - [GitHub Actions](#github-actions)
+- [Part 6: Backend, Ingress & Networking Architecture](#part-6-backend-ingress--networking-architecture)
+  - [API Gateways](#api-gateways)
+  - [Reverse Proxy (Ingress Layer)](#reverse-proxy-ingress-layer)
+  - [NGINX](#nginx)
+  - [Microservices Architecture](#microservices-architecture)
+  - [SSL/TLS Certificates](#ssltls-certificates)
+- [Part 7: Notes to Self & Career Roadmap](#part-7-notes-to-self--career-roadmap)
+  - [Refresh on Networking Concepts](#refresh-on-networking-concepts--bro-you-know-all-of-these-from-3rd-year)
+  - [Cloud Concepts](#cloud-concepts)
+  - [Linux Commands & Concepts](#linux-commands--concepts)
+  - [Additional DevOps & Backend Concepts](#additional-devops--backend-concepts)
+  - [Career Advice & Transition Suggestions](#career-advice--transition-suggestions)
+
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 1: Environment & Dependency Management
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Managing Dependencies (python based backend)
+
+### For python based APIs:
 
 - To create the requirements.txt file, use
   - `python -m venv venv` (create a virtual environment)
@@ -13,12 +57,20 @@
   - put dependencies mainly for testing only (pytest, httpx)
   - standard dependencies for testing in python is pytest and httpx
 
-# Creating Dockerfiles
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 2: Containerization & Local Orchestration (Docker)
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Creating Dockerfiles
 
 - Dockerfile notes are commented under each dockerfile within this project.
 - Always create a `.dockerignore` file. Put the files unnecessary for the deployed state such as unit tests, python caches, venv, `.git` and `.gitignore` files.
 
-## Testing Dockerfiles (Buidling and Running docker images)
+### Testing Dockerfiles (Building and Running docker images)
 
 - `docker build -t 'image_name':'tag' .` | command for building the image based on dockerfile. Must run within the directory of the app.
 - `docker run -p 'host_port':'container_port' 'image_name'` | command for running the image. Add `-d` before image name to detach terminal.
@@ -28,7 +80,7 @@
 - `docker system prune` | removes every image/build that are unused
 - `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | opens a live terminal within the container
 
-# Docker Compose
+## Docker Compose
 
 - Should be made after creating the initial services within the codebase (core business logic)
 - Docker compose file should grow alongside the codebase.
@@ -67,7 +119,15 @@
 
 - For needing to run specific commands within the dedicated service/image, use `docker compose exec 'service_name' 'command'`
 
-# Terraform (IaC - Infrastructure as Code)
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 3: Infrastructure as Code (Terraform)
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Terraform (IaC - Infrastructure as Code)
 
 - Made after creating the initial services cluster (the API.)
 - `terraform init` | command for preparing terraform directory (`.terraform`). Donwloads necessary provider plugins (defined under `terraform/required_providers` block)
@@ -76,76 +136,132 @@
 - `terraform destroy` | removes everything that is defined within the terraform configuration
 - `terraform fmt` | formats your code to make it more clean
 
-# Terraform State Management
+## Terraform State Management
 
 - Terraform state (`.tfstate`) file is a JSON file that tracks the resources created by Terraform the last time the `terraform apply` command was run.
 - It is used by Terraform to keep track of the resources (as a lookup table) it has created and to ensure that the infrastructure matches the desired state defined in the code.
 
+### Scenarios & Questions
 
-**Scenario 1:** If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run `terraform plan`? Why?
+> **Scenario 1:** If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run `terraform plan`? Why?
+>
+> - Terraform will perform a background refresh by checking the `.tfstate` file for the existing resources, then calls Azure API for each resource to verify its existence.
+> - Then terraform will detect that the resource no longer exists.
+> - If the resource is still within the `.tf` file, the next time that `terraform apply` is run, it will attempt to create the resource again.
 
-- Terraform will perform a background refresh by checking the `.tfstate` file for the existing resources, then calls Azure API for each resource to verify its existence.
-- Then terraform will detect that the resource no longer exists.
-- If the resource is still within the `.tf` file, the next time that `terraform apply` is run, it will attempt to create the resource again.
+> **Scenario 2:** If you delete your local `terraform.tfstate` file, but the Azure resources still exist, what happens the next time you run `terraform apply`?
+>
+> - Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
+> - But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests. 
+> - It does not recreate the state file, so the next time you run `terraform apply`, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using `terraform import`.
 
-**Scenario 2:** If you delete your local `terraform.tfstate` file, but the Azure resources still exist, what happens the next time you run `terraform apply`?
+> **If Developer A and Developer B both run `terraform apply` from their own laptops at the exact same time using local state, what is the risk to the Azure environment?**
+>
+> - Multiple API calls to create resources will be sent and could cause conflicts, duplicate resources, and broken tfstate files for both ends.
 
-- Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
-- But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests. 
-- It does not recreate the state file, so the next time you run `terraform apply`, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using `terraform import`.
+> **Why can’t you just commit `terraform.tfstate` to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).**
+>
+> - Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc. On which, everything is stored as plaintext, and Azure Blob storage is the one encrypthing it.
 
-**If Developer A and Developer B both run `terraform apply` from their own laptops at the exact same time using local state, what is the risk to the Azure environment?**
-- Multiple API calls to create resources will be sent and could cause conflicts, duplicate resources, and broken tfstate files for both ends.
+> **How does Terraform provision the resource needed for the remote state file if it does not exist yet?**
+>
+> - You provision it manually using the Azure portal or CLI.
+> - Through bootsrapping. Create a separate Terraform configuration file first in a separate directory which provisions the storage account and container for the remote state file. Then you can run `terraform init` in the main directory to use the remote state file.
 
-**Why can’t you just commit `terraform.tfstate` to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).**
-- Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc. On which, everything is stored as plaintext, and Azure Blob storage is the one encrypthing it.
+## Key CLI commands
 
-**How does Terraform provision the resource needed for the remote state file if it does not exist yet?**
-- You provision it manually using the Azure portal or CLI.
-- Through bootsrapping. Create a separate Terraform configuration file first in a separate directory which provisions the storage account and container for the remote state file. Then you can run `terraform init` in the main directory to use the remote state file.
-
-**Key CLI commands**
 - `terraform state list`: Lists all resources in the state file.
 - `terraform state show <resource>`: Shows the details of a specific resource in the state file.
 - `terraform import <resource> <id>`: Imports an existing resource from Azure into the state file in cases of people adding resources manually.
 - `terraform state rm <resource>`: Removes a resource from the state file without deleting it from Azure.
 - `terraform state mv <old_resource> <new_resource>`: Renames a resource in the state file.
 
-# Azure Blob
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 4: Cloud Platform & Identity Management (Azure)
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Azure Blob
+
 - Azure Blob Storage is a service that allows you to store unstructured data such as logs, backups, and media files.
 - Has a Blob Lease feature that allows you to lock a file (a blob) when it is being used by a resource, such as terraform's state files to prevent other resources from modifying it until it is done.
 
-# Azure Identity
+## Azure Identity
+
 - Identities assigned to entities such as human identities, or pipelines/services.
 - It is used by Azure services to authenticate and authorize access to resources.
 
-- **Traditional Active Directory vs Microsoft Entra ID**
-  - Traditional Active Directory is on premises, while Microsoft Entra ID (formerly Azure Active Directory) is cloud-based.
+### Traditional Active Directory vs Microsoft Entra ID
+- Traditional Active Directory is on premises, while Microsoft Entra ID (formerly Azure Active Directory) is cloud-based.
 
-- **App Registration vs Enterprise Application**
-  - App registration is mainly for providing credentials for a specific app to access Azure resources. It handles `Authentication`.
-  - App registration holds the Application ID and Client Secret.
-  - Enterprise application is for assigning RBAC permissions to a group of users or service principals, such as the App Registration itself. It handles `Authorization`.
-  - Enterprise application holds the actual RBAC roles and sign in logs. 
+### App Registration vs Enterprise Application
+- App registration is mainly for providing credentials for a specific app to access Azure resources. It handles `Authentication`.
+- App registration holds the Application ID and Client Secret.
+- Enterprise application is for assigning RBAC permissions to a group of users or service principals, such as the App Registration itself. It handles `Authorization`.
+- Enterprise application holds the actual RBAC roles and sign in logs. 
 
-- **Service Principal**
-  - Service principal is a type of identity that represents an app or service, not a user.
-  - It is used to authenticate and authorize access to Azure resources on behalf of the app or service, such as a VM instance, CI/CD pipeline runners, or other Azure services.
+### Service Principal
+- Service principal is a type of identity that represents an app or service, not a user.
+- It is used to authenticate and authorize access to Azure resources on behalf of the app or service, such as a VM instance, CI/CD pipeline runners, or other Azure services.
 
-# SSH Keygen 
+### Azure RBAC vs Microsoft Entra ID
+- Microsoft Entra ID is used to manage access to Azure resources at the `directory level`, such as assigning RBAC roles to groups of users or service principals.
+  - Sample: Global Administrator, User Administrator, Application Administrator
+  - Create new user accounts, reset passwornds, register new apps, manage group memberships, etc.
+- Azure RBAC (Role-Based Access Control) is used to manage access to Azure resources at the `resource level`.
+  - Sample: Contributor, Reader, Storage Blob Data Contributor, AcrPull.
+  - Deploy VMs, read secrets from Key Vault, pull container images, create databases, etc.
+
+### Common Built-in Roles
+- Azure splits actions into two planes:
+  - Control Plane (Management): Managing the resource itself, such as starting a VM, resizing a storage account, or deleting a resource.
+  - Data Plane: Accessing the actual data inside a resource, such as reading secrets from Key Vault, reading rows in a database, pulling images from ACR.
+
+| Built-in Role | Plane | What It Can Do | What It Cannot Do |
+| --- | --- | --- | --- |
+| Reader | Control Plane | View existing resources and configurations | Make any changes or read sensitive data payloads |
+| Contributor | Control Plane | Create, update, restart, and delete resources | Grant/modify permissions (RBAC) to other users |
+| Owner | Control Plane | Full management access + grant permissions to others | — |
+| AcrPull | Data Plane | Pull container images from Azure Container Registry | Push images, delete repositories, manage ACR settings |
+| Key Vault Secrets User | Data Plane | Read secret values inside a Key Vault | Create or delete the Key Vault resource itself |
+
+### Scope Hierarchy
+```text
+Management Group
+ └── Subscription
+      └── Resource Group
+           └── Individual Resource
+```
+- Management Group: Managing access, policies, and compliance for multiple subscriptions.
+- Subscription: Biling and operational boundary.
+- Resource Group (RG): Logical container for resources, used for managing access, policies, and compliance sharing the same lifecycle.
+- Individual Resource: A specific Azure resource, such as a VM, storage account, or database.
+
+## SSH Keygen
 
 - `ssh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
 - When command is run, it generates an `id_rsa.pub` (public key) and `id_rsa` (private key)
 - Layman concept: `id_rsa.pub` is the lock and `id_rsa` is your key to the lock. You provide the lock in a VM instance. 
 - When you try to connect via SSH, your local machine uses the key to verify the signature based on the lock provided. Once verified, you will be given access to the VM without entering a password.
 
-# Azure Container Registry (ACR)
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 5: CI/CD Pipelines & Automation (GitHub Actions)
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Azure Container Registry (ACR)
 
 - Basically storage of Docker Images to be deployed within the VM
 - Docker images are built within Github Actions (CI/CD) and pushed within ACR
 - `admin_enabled` is set as true to have a username and password credentials to put within Github Actions secrets
 
-# GitHub Actions
+## GitHub Actions
 
 - Ideal pipelines for development:
   - Pull Requests:
@@ -157,7 +273,13 @@
     - Build Docker Image and Push to ACR
     - Deployment to VM
 
-# Backend Concepts
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 6: Backend, Ingress & Networking Architecture
+
+[▲ Back to Table of Contents](#-table-of-contents)
 
 ## API Gateways
 
@@ -189,7 +311,6 @@
     - Compression (Compresess request with large files included (such as videos) to lessen bandwidth usage and improve load times.)
     - Segmentation (Send responses in chunks, usually in video streaming.)
   - Modify configuration using `nginx.conf` file.
-  
 
 ## Microservices Architecture
 
@@ -197,7 +318,13 @@
 
 ## SSL/TLS Certificates
 
-# Notes to Self
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 7: Notes to Self & Career Roadmap
+
+[▲ Back to Table of Contents](#-table-of-contents)
 
 ## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
 
@@ -266,7 +393,7 @@
 - [x] API Gateways
 - [ ] Secret Management
 
-### Career Advice & Transition Suggestions
+## Career Advice & Transition Suggestions
 
 To transition from backend to DevOps/Cloud in the long run:
 
