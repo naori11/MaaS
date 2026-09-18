@@ -203,7 +203,7 @@
 - Enterprise application is for assigning RBAC permissions to a group of users or service principals, such as the App Registration itself. It handles `Authorization`.
 - Enterprise application holds the actual RBAC roles and sign in logs. 
 
-### Service Principal
+### Service Principal (Basically the same as Enterprise Application)
 - Service principal is a type of identity that represents an app or service, not a user.
 - It is used to authenticate and authorize access to Azure resources on behalf of the app or service, such as a VM instance, CI/CD pipeline runners, or other Azure services.
 
@@ -239,6 +239,22 @@ Management Group
 - Subscription: Biling and operational boundary.
 - Resource Group (RG): Logical container for resources, used for managing access, policies, and compliance sharing the same lifecycle.
 - Individual Resource: A specific Azure resource, such as a VM, storage account, or database.
+
+## Managed Identities
+- Makes it easier to manage access to Azure resources without hardcoding credentials.
+- It transforms manual credential management into a more automated and secure process (similar to having a badge that verifies your identity)
+- It gives your code hosted in a VM access to Azure resources without needing to store credentials in the VM.
+- Basically, a service (Azure Instance Metadata Service [IMDS]) is listening within Azure's hypervisor. It is used and accessed by the VMs to provide identity and access to Azure resources. The application code requests for a short lived Microsoft Entra ID token that they use to authenticate with Azure services.
+
+### User Assigned vs System Assigned Managed Identity
+- User Assigned: 
+  - 1 is to many resources.
+  - Created as an independent resource in a resource group.
+  - Existence is independent of the resource it is assigned to.
+- System Assigned: 
+  - 1 is to 1 resource.
+  - Enabled directly as a toggle on the Azure Resource.
+  - If resource is deleted, the identity is automatically removed.
 
 ## SSH Keygen
 
