@@ -256,6 +256,16 @@ Management Group
   - Enabled directly as a toggle on the Azure Resource.
   - If resource is deleted, the identity is automatically removed.
 
+## OpenID Connect (OIDC) for GitHub Actions
+- Usually, connecting GitHub actions to Azure resources requires a service principal or managed identity with a client secret and pasting it directly into the GitHub Repository Secrets.
+- But instead, you can use OIDC to authenticate without a client secret.
+- OIDC works through the following process:
+  - A GitHub Actions workflow triggers GitHub's internal token service for a OIDC JWT token.
+  - GitHub signs the token using its private key that contains information about the repository, organization, git ref, and other metadata.
+  - The signed token is sent to Azure through Microsoft Entra ID.
+  - Entra ID uses GitHub's public key to verify the token.
+  - If the token is verified, Entra ID responds with an access token that disappears once the GitHub Actions workflow is complete.
+
 ## SSH Keygen
 
 - `ssh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
