@@ -248,6 +248,16 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
     sudo usermod -aG docker azureuser
     EOF
   )
+
+  # ---------------------------------------------------------------------------------------------------------
+  # AZURE IDENTITY (Managed Identity):
+  # A Service Principal is an identity created for an application or machine rather than a human user.
+  # By setting type to "SystemAssigned", Azure automatically creates a Service Principal in Microsoft Entra ID tied directly to the lifecycle of this VM.
+  # ---------------------------------------------------------------------------------------------------------
+  identity {
+    type = "SystemAssigned"
+  }
+
 }
 
 # -----------------------------------------
@@ -261,7 +271,45 @@ resource "azurerm_container_registry" "maas_acr" {
   resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group where the container registry will be created, referencing the resource group defined above.
   location            = azurerm_resource_group.maas_rg.location # The location where the container registry will be created, referencing the resource group defined above.
   sku                 = "Basic"                                 # The SKU (Stock Keeping Unit) for the container registry, which determines the features and pricing tier. "Basic" is a cost-effective option suitable for development and testing scenarios, providing essential features for storing and managing container images.
-  admin_enabled       = true                                    # Enable the admin user account for the container registry, which allows you to authenticate and manage the registry using a username and password. This is useful for development and testing purposes, but in production, it's recommended to use more secure authentication methods, such as Azure Active Directory or service principals.
+
+  # As noted in MANUAL_NOTES.md:
+  # Turning off "admin_enabled" (false) disables the legacy shared username/password for the registry.
+  # Instead of using shared static passwords, all access is governed through Azure RBAC (least privilege).
+  admin_enabled = false
+}
+
+# -----------------------------------------
+# Azure Role-Based Access Control (RBAC) for MAAS Cluster
+# -----------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------
+# AZURE RBAC (Role-Based Access Control) ROLE ASSIGNMENT:
+#
+# 1. Resource Level (Scope) (What resource would be given access to):
+#    - Scope is set to the individual ACR resource ID (`azurerm_container_registry.maas_acr.id`).
+#    - Following the scope hierarchy (Management Group -> Subscription -> Resource Group -> Resource),
+#      this grants permissions ONLY to this specific ACR, not the entire subscription or resource group.
+#
+# 2. Data Plane Role ("AcrPull") (The permissions granted to the identity):
+#    - Azure separates Control Plane (managing the resource) from Data Plane (accessing content).
+#    - "AcrPull" is a Data Plane role allowing the identity to pull container images (`docker pull`),
+#      without granting permissions to push images, delete repositories, or alter ACR configuration.
+#
+# 3. Principal ID (The identity that is being granted the role):
+#    - Points to `azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id`, which is the
+#      Object ID of the VM's Service Principal generated in Microsoft Entra ID.
+# ---------------------------------------------------------------------------------------------------------
+
+# Define the role assignment for the VM to pull from the ACR
+# "azurerm_role_assignment" is the resource type used to assign a role to a principal (VM identity) at the resource level (ACR).
+resource "azurerm_role_assignment" "vm_acr_pull" {
+  # Which resource to assign the role to (ACR in this case) (Who?)
+  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id
+  # Which role to assign (AcrPull allows the identity to pull container images) (What?)
+  role_definition_name = "AcrPull"
+  # What resource to assign the role to (ACR in this case) (Where?)
+  scope                = azurerm_container_registry.maas_acr.id
+
 }
 
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
