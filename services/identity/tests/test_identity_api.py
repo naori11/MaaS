@@ -143,4 +143,14 @@ def test_register_rejects_malformed_payload(client):
     )
 
     assert response.status_code == 400
+    assert response.json() == {"error": {"message": "password: Field required"}}
+
+
+def test_register_rejects_password_too_short(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "short-password@example.com", "password": "short"},
+    )
+
+    assert response.status_code == 400
     assert response.json() == {"error": {"message": "password: String should have at least 8 characters"}}
