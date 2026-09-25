@@ -99,6 +99,17 @@ describe("Login page", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("shows validation error when password is less than 8 characters", () => {
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "short" } });
+    fireEvent.click(screen.getByRole("button", { name: "Initiate Session" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Access Cipher must be at least 8 characters long.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("shows invalid credential error from gateway", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -115,7 +126,7 @@ describe("Login page", () => {
     render(<LoginPage />);
 
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "user@example.com" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "wrong" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "wrongpassword" } });
     fireEvent.click(screen.getByRole("button", { name: "Initiate Session" }));
 
     await waitFor(() => {
@@ -132,7 +143,7 @@ describe("Login page", () => {
     render(<LoginPage />);
 
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "user@example.com" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "wrong" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "wrongpassword" } });
     fireEvent.click(screen.getByRole("button", { name: "Initiate Session" }));
 
     await waitFor(() => {
