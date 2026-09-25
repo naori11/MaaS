@@ -23,7 +23,6 @@ from config import (
     get_xendit_secret_key,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

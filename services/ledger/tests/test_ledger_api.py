@@ -1,16 +1,15 @@
 import asyncio
+import importlib
 import importlib.util
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
-import importlib
 import pytest
 from fastapi.testclient import TestClient
-
 
 _SERVICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_SERVICE_DIR))
