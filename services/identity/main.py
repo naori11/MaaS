@@ -1,12 +1,11 @@
-from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from typing import Annotated, Literal
-from uuid import uuid4
-
 import base64
 import hashlib
 import hmac
 import secrets
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
+from uuid import uuid4
 
 import jwt
 from fastapi import FastAPI, HTTPException, Request
@@ -17,11 +16,10 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import DateTime, String, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.pool import StaticPool
 
 from config import DATABASE_URL, JWT_ALGORITHM, JWT_EXPIRES_SECONDS, JWT_SECRET
-
 
 Password = Annotated[str, StringConstraints(min_length=8)]
 
