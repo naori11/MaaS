@@ -1,8 +1,10 @@
 import importlib.util
+import sys
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import sys
-from typing import Any, Callable, ClassVar
+from types import TracebackType
+from typing import Any, ClassVar, Self
 
 import httpx
 import jwt
@@ -50,10 +52,15 @@ class FakeAsyncClient:
     def __init__(self, *args: Any, **kwargs: Any):
         pass
 
-    async def __aenter__(self) -> "FakeAsyncClient":
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         return False
 
     async def post(self, url: str, json: dict[str, Any], headers: dict[str, str]) -> FakeResponse:

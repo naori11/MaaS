@@ -1,7 +1,7 @@
 import importlib.util
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from uuid import UUID
 
 import jwt
@@ -140,6 +140,16 @@ def test_register_rejects_malformed_payload(client):
     response = client.post(
         "/api/v1/auth/register",
         json={"email": "missing-password@example.com"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": {"message": "password: Field required"}}
+
+
+def test_register_rejects_password_too_short(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "short-password@example.com", "password": "short"},
     )
 
     assert response.status_code == 400

@@ -1,14 +1,13 @@
+import sys
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
-import sys
 
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from main import app  # noqa: E402
-
+from main import app
 
 client = TestClient(app)
 

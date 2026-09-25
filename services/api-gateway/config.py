@@ -1,6 +1,5 @@
 import os
 
-
 IDENTITY_SERVICE_URL = os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8010")
 BILLING_SERVICE_URL = os.getenv("BILLING_SERVICE_URL", "http://localhost:8031")
 MATH_ADD_SERVICE_URL = os.getenv("MATH_ADD_SERVICE_URL", "http://localhost:8011")

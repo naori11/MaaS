@@ -4,9 +4,18 @@ on: # The events that trigger the workflow.
   push: # Trigger the workflow on push events to the main branch.
     branches:
       - master
+  workflow_dispatch: # Trigger the workflow manually from the GitHub Actions UI.
+
+# OIDC PERMISSIONS:
+# In order to exchange a token with Microsoft Entra ID without storing passwords, GitHub Actions must have permission to request an OIDC JWT ID token.
+# - 'id-token: write': Required to request the cryptographically signed JWT token from GitHub's OIDC provider.
+# - 'contents: read': Required by actions/checkout module to clone the repository code.
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
-  build-and-deploy: # Name of the job that will be displayed in the GitHub Actions UI.
+  build-and-push: # Name of the job that will be displayed in the GitHub Actions UI.
     runs-on: ubuntu-latest # The type of runner that the job will run on.
 
     strategy: # Tells GitHub Actions to run the job repeatedly for each service defined in the matrix.
@@ -26,14 +35,32 @@ jobs:
 
     steps:
       - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
-        uses: actions/checkout@v6 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+        uses: actions/checkout@v7 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+
+      # [ OIDC Login Method ]
+      # Instead of using Static Credentials, use the Federated Credentials method to log in to Azure ACR.
+      # This method uses OIDC to log in to Azure, avoiding the need for static credentials.
+      - name: Azure Login via OIDC
+        uses: azure/login@v3 # Pre-built Azure module/repository to log in to Azure.
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }} # The client ID for the Azure service principal.
+          tenant-id: ${{ vars.AZURE_TENANT_ID }} # The tenant ID for the Azure service principal.
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }} # The subscription ID for the Azure service principal.
 
       - name: Login to Azure ACR
-        uses: azure/docker-login@v2 # Pre-built Azure module/repository to log in to Azure Container Registry (ACR) using Docker.
-        with:
-          login-server: ${{ secrets.ACR_LOGIN_SERVER }} # The login server of the Azure Container Registry, stored as a secret in GitHub.
-          username: ${{ secrets.ACR_USERNAME }} # The username for the Azure Container Registry, stored as a secret in GitHub.
-          password: ${{ secrets.ACR_PASSWORD }} # The password for the Azure Container Registry, stored as a secret in GitHub.
+        run: az acr login --name acrmaascluster
+
+      # [ LEGACY PREVIOUS METHOD ]
+      # Static Secrets are potential risks when leaked.
+      # Instead of using Static Credentials, use OIDC to log in to Azure ACR.
+      # Legacy method is saved for reference.
+
+      # - name: Login to Azure ACR
+      #   uses: azure/docker-login@v2 # Pre-built Azure module/repository to log in to Azure Container Registry (ACR) using Docker.
+      #   with:
+      #     login-server: ${{ secrets.ACR_LOGIN_SERVER }} # The login server of the Azure Container Registry, stored as a secret in GitHub.
+      #     username: ${{ secrets.ACR_USERNAME }} # The username for the Azure Container Registry, stored as a secret in GitHub.
+      #     password: ${{ secrets.ACR_PASSWORD }} # The password for the Azure Container Registry, stored as a secret in GitHub.
 
       # To reduce the code blocks and avoid repetition within the pipeline.
       # The strategy tag would be used to loop through the services and perform the build and push steps for each service.
@@ -63,9 +90,37 @@ jobs:
           # Push the Docker image to Azure Container Registry with the commit hash as the tag for versioning and traceability.
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
 
-          # For versioning purposes, also tag the image as 'latest' and push it to Azure Container Registry. 
+          # For versioning purposes, also tag the image as 'latest' and push it to Azure Container Registry.
           # This allows users to pull the latest version of the image without specifying a tag.
           docker build ./services/${{ matrix.service }} -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
 
           # Push the 'latest' tagged image to Azure Container Registry.
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
+
+  deploy-to-vm:
+    needs: build-and-push # The job will not run until the 'build-and-push' job completes successfully.
+    runs-on: ubuntu-latest # The type of runner that the job will run on.
+    steps:
+      - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
+        uses: actions/checkout@v7 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+
+      - name: Azure OIDC Login
+        uses: azure/login@v3 # Pre-built Azure module/repository to log in to Azure.
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }} # The client ID for the Azure service principal.
+          tenant-id: ${{ vars.AZURE_TENANT_ID }} # The tenant ID for the Azure service principal.
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }} # The subscription ID for the Azure service principal.
+
+      - name: VM Container Update
+        # Instead of using ssh to run commands on the VM, we use the Azure CLI to run commands directly on the VM.
+        run: |
+          az vm run-command invoke \
+            --resource-group rg-maas-cluster \
+            --name vm-maas-cluster \
+            --command-id RunShellScript \
+            --scripts "
+              cd /home/azureuser/app || true
+              az acr login --name acrmaascluster --identity
+              docker compose pull
+              docker compose up -d --remove-orphans
+            "

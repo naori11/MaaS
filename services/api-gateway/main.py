@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 from threading import Lock
@@ -6,8 +7,8 @@ from time import time
 import httpx
 import jwt
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
 
 from config import (
@@ -26,6 +27,7 @@ from config import (
     UPSTREAM_TIMEOUT_SECONDS,
 )
 
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -99,11 +101,7 @@ def _requires_jwt(method: str, path: str) -> bool:
         return False
 
     # For all known routes in the gateway, require JWT by default
-    if path in _ROUTE_MAP:
-        return True
-
-    # For unknown routes, do not enforce JWT at the gateway
-    return False
+    return path in _ROUTE_MAP
 
 
 def _enforce_rate_limit(request: Request) -> None:
@@ -196,8 +194,8 @@ async def _publish_ledger_event(event: dict, request_id: str) -> None:
                 json=event,
                 headers=headers,
             )
-    except Exception:
-        pass
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to publish ledger event: %s", exc)
 
 
 @app.middleware("http")
@@ -258,8 +256,6 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
 
     if request.url.path == "/api/v1/billing/webhook/xendit":
         # Log incoming headers for debugging, but redact sensitive values.
-        import logging
-        logger = logging.getLogger(__name__)
         redacted_headers = dict(request.headers)
         for sensitive_header in ("x-callback-token", "authorization"):
             if sensitive_header in redacted_headers:
@@ -299,8 +295,8 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
         try:
             ledger_event = _build_ledger_event(request_id, request.url.path, payload, response_payload)
             background_tasks.add_task(_publish_ledger_event, ledger_event, request_id)
-        except Exception:
-            pass
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Failed to enqueue ledger event: %s", exc)
 
     return JSONResponse(
         status_code=upstream_response.status_code,

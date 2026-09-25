@@ -75,7 +75,7 @@ describe("Signup page", () => {
 
     fireEvent.change(screen.getByLabelText("Full Name"), { target: { value: "Euler" } });
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "euler@maas.dev" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret123" } });
     fireEvent.click(screen.getByRole("button", { name: "Provision Account" }));
 
     await waitFor(() => {
@@ -110,6 +110,17 @@ describe("Signup page", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("shows validation error when password is less than 8 characters", () => {
+    render(<SignupPage />);
+
+    fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "euler@maas.dev" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "short" } });
+    fireEvent.click(screen.getByRole("button", { name: "Provision Account" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Access Cipher must be at least 8 characters long.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("allows empty full name and still submits", async () => {
     fetchMock
       .mockResolvedValueOnce(
@@ -135,7 +146,7 @@ describe("Signup page", () => {
     render(<SignupPage />);
 
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "euler@maas.dev" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret123" } });
     fireEvent.click(screen.getByRole("button", { name: "Provision Account" }));
 
     await waitFor(() => {
@@ -160,7 +171,7 @@ describe("Signup page", () => {
     render(<SignupPage />);
 
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "euler@maas.dev" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret123" } });
     fireEvent.click(screen.getByRole("button", { name: "Provision Account" }));
 
     await waitFor(() => {
@@ -190,7 +201,7 @@ describe("Signup page", () => {
 
     fireEvent.change(screen.getByLabelText("Full Name"), { target: { value: "Euler" } });
     fireEvent.change(screen.getByLabelText("Node Identity"), { target: { value: "euler@maas.dev" } });
-    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret" } });
+    fireEvent.change(screen.getByLabelText("Access Cipher"), { target: { value: "secret123" } });
     fireEvent.click(screen.getByRole("button", { name: "Provision Account" }));
 
     await waitFor(() => {
