@@ -35,13 +35,13 @@ jobs:
 
     steps:
       - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
-        uses: actions/checkout@v6 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+        uses: actions/checkout@v7 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
 
       # [ OIDC Login Method ]
       # Instead of using Static Credentials, use the Federated Credentials method to log in to Azure ACR.
       # This method uses OIDC to log in to Azure, avoiding the need for static credentials.
       - name: Azure Login via OIDC
-        uses: azure/login@v2 # Pre-built Azure module/repository to log in to Azure.
+        uses: azure/login@v3 # Pre-built Azure module/repository to log in to Azure.
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }} # The client ID for the Azure service principal.
           tenant-id: ${{ vars.AZURE_TENANT_ID }} # The tenant ID for the Azure service principal.
@@ -102,10 +102,10 @@ jobs:
     runs-on: ubuntu-latest # The type of runner that the job will run on.
     steps:
       - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
-        uses: actions/checkout@v6 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
+        uses: actions/checkout@v7 # Pre-built GitHub module/repository to run the 'git clone' command to check out the repository code.
 
       - name: Azure OIDC Login
-        uses: azure/login@v2 # Pre-built Azure module/repository to log in to Azure.
+        uses: azure/login@v3 # Pre-built Azure module/repository to log in to Azure.
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }} # The client ID for the Azure service principal.
           tenant-id: ${{ vars.AZURE_TENANT_ID }} # The tenant ID for the Azure service principal.
