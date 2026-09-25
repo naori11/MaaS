@@ -4,6 +4,7 @@ on: # The events that trigger the workflow.
   push: # Trigger the workflow on push events to the main branch.
     branches:
       - master
+  workflow_dispatch: # Trigger the workflow manually from the GitHub Actions UI.
 
 # OIDC PERMISSIONS:
 # In order to exchange a token with Microsoft Entra ID without storing passwords, GitHub Actions must have permission to request an OIDC JWT ID token.
