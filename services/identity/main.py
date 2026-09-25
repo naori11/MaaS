@@ -99,7 +99,7 @@ def _verify_password(password: str, password_hash: str) -> bool:
         iterations = int(iterations_raw)
         salt = base64.b64decode(salt_raw.encode("ascii"), validate=True)
         expected = base64.b64decode(expected_raw.encode("ascii"), validate=True)
-    except Exception:
+    except ValueError:
         return False
 
     derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
