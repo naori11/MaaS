@@ -4,9 +4,23 @@ on: # The events that trigger the workflow.
   push: # Trigger the workflow on push events to the main branch.
     branches:
       - master
+    paths-ignore:
+      - '**.md'
+      - 'self-study/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'ARCHITECTURE.md'
+      - 'CLAUDE.md'
   pull_request: # Trigger the workflow on pull request events targeting the main branch.
     branches:
       - master
+    paths-ignore:
+      - '**.md'
+      - 'self-study/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'ARCHITECTURE.md'
+      - 'CLAUDE.md'
 
 permissions: # Minimum token permissions for this workflow.
   contents: read  # Allow read-only access to repository contents.

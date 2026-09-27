@@ -4,9 +4,23 @@ on: # Events that trigger this workflow.
   pull_request: # Run unit tests for PRs targeting master.
     branches:
       - master
+    paths-ignore:
+      - '**.md'
+      - 'self-study/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'ARCHITECTURE.md'
+      - 'CLAUDE.md'
   push: # Run unit tests for direct pushes to master.
     branches:
       - master
+    paths-ignore:
+      - '**.md'
+      - 'self-study/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'ARCHITECTURE.md'
+      - 'CLAUDE.md'
 
 permissions: # Minimum permissions required by this workflow.
   contents: read # Read-only access to repository contents.
