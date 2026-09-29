@@ -355,8 +355,8 @@ Management Group
 ## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
 
 - [x] CIDR Notation
-- [ ] IP Subnetting
-- [ ] OSI Layer
+- [x] IP Subnetting
+- [x] OSI Layer
   - [ ] Layer 4: TCP vs UDP
   - [ ] Layer 7: HTTP, HTTPS, WebSockets
 - [ ] Network Address Translation
@@ -366,11 +366,11 @@ Management Group
 ## Cloud Concepts
 
 - [x] Infrastructure as Code (IaC)
-- [ ] State Files
+- [x] State Files
 - [ ] Shared Responsibility Model
 - [x] Virtual Machines (IaaS)
 - [ ] App Services (PaaS)
-- [ ] Container Registries (ACR)
+- [x] Container Registries (ACR)
 - [ ] Kubernetes Services (AKS)
 - [ ] Virtual Networks (VNet)
 - [ ] Subnets
@@ -384,7 +384,7 @@ Management Group
 - [ ] Managed Databases (SQL / PostgreSQL)
 - [ ] Identity & Access Management (IAM)
 - [ ] Role-Based Access Control (RBAC)
-- [ ] Azure Entra ID
+- [x] Azure Entra ID
 - [ ] Azure Key Vault
 - [ ] Managed Identities
 - [ ] Log Analytics / Azure Monitor
