@@ -3,13 +3,10 @@ services:
   # Edge Proxy (Entry Point for Clients)
   # ---------------------------------------------
   nginx:
-    image: nginx:alpine
+    build: ./services/nginx # Directory containing the Dockerfile for the Nginx proxy service
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./services/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - api-gateway
 

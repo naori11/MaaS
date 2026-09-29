@@ -344,7 +344,45 @@ Management Group
 
 ## SSL/TLS Certificates
 
-<div style="page-break-after: always;"></div>
+### Why Does the Browser Say "Not Secure" on `https://localhost`?
+
+When testing `https://localhost` in the browser, you will see a red lock or warning:
+> **"Not secure - Your connection to this site is not secure"** (`NET::ERR_CERT_AUTHORITY_INVALID`)
+
+This is completely normal and expected when using **self-signed certificates**.
+
+---
+
+### The Fundamental Rule: Encryption vs. Identity (Authentication)
+
+A common misconception is that "Not Secure" means the connection is unencrypted. **It is not!**
+
+| Concept | What It Means | Is It Working on `https://localhost`? |
+| :--- | :--- | :--- |
+| **1. Encryption (Privacy)** | Scrambles data so nobody sniffing Wi-Fi/network can read your traffic (uses RSA-2048, AES-256). | **YES (100% Active)** |
+| **2. Identity (Trust)** | Proves the server actually belongs to the person claiming to own it. | **NO (Self-Signed)** |
+
+---
+
+### How Browsers Check Certificates: The Trust Chain
+
+1. Every operating system (Windows, macOS) and browser comes with a built-in list of **Trusted Root Certification Authorities** (e.g., DigiCert, Let's Encrypt, Google Trust Services, Sectigo).
+2. When you connect to `https://google.com`, Chrome looks at Google's certificate, sees it was signed by a trusted CA on its pre-approved list, and displays a normal lock.
+3. When you connect to `https://localhost` with our self-signed certificate, NGINX presents a certificate signed by **itself** (not a trusted CA).
+4. Chrome does not know who created this certificate, so it warns the user: 
+   > *"I can encrypt the traffic, but I cannot guarantee who owns this server."*
+
+---
+
+### Local Dev vs. Real Production
+
+* **Why we use self-signed certificates locally & on raw cloud IPs:**
+  - Certificate Authorities (like Let's Encrypt) **only issue certificates to real, registered domain names** (e.g., `maas-api.com`). They will **never** issue a certificate for `localhost` or a raw IP address (`https://20.198.42.15`).
+  - Therefore, self-signed certificates are the universal industry standard for local development, Docker environments, and raw IP testing.
+* **How production makes it "Secure" (Green / Normal Lock):**
+  1. Point a registered domain name (e.g. `api.maas.com`) to the Azure VM's public IP.
+  2. Use **Let's Encrypt (Certbot)**, **Cloudflare**, or **Azure Key Vault** to issue a certificate signed by a recognized Certificate Authority.
+  3. The browser verifies the CA signature, recognizes the authority, and removes the "Not Secure" warning.
 
 ---
 

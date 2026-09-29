@@ -125,18 +125,51 @@ resource "azurerm_network_security_group" "maas_nsg" {
     destination_address_prefix = "*"       # The destination address prefix for the rule, which is set to "*" in this case, meaning it applies to traffic destined for any destination IP address (any resources, since the public IP is dynamic).
   }
 
-  # RULE 2: Allow access to API Gateway (port 4000)
-  # This rule allows incoming traffic to port 4000, which is the default port for the MAAS API Gateway.
+  # -------------------------------------------------------------------------------------------------
+  # [PREVIOUS RULE - Kept for study reference]:
+  # Originally, API Gateway port 4000 is directly exposed to the internet.
+  # Now that NGINX is our edge reverse proxy, clients should never hit port 4000 directly.
+  # Instead, traffic enters strictly via standard web ports (80 and 443).
+  #
+  # security_rule {
+  #   name                       = "API-Gateway"
+  #   priority                   = "1002"
+  #   direction                  = "Inbound"
+  #   access                     = "Allow"
+  #   protocol                   = "Tcp"
+  #   source_port_range          = "*"
+  #   destination_port_range     = "4000"
+  #   source_address_prefix      = "*"
+  #   destination_address_prefix = "*"
+  # }
+  # -------------------------------------------------------------------------------------------------
+
+  # RULE 2: Allow HTTP (port 80)
+  # Allows incoming HTTP traffic so NGINX can redirect clients to secure HTTPS (301 redirect).
   security_rule {
-    name                       = "API-Gateway" # The name of the security rule, which is "API-Gateway" in this case.
-    priority                   = "1002"        # The priority of the security rule, which determines the order in which rules are evaluated. Lower numbers have higher priority.
-    direction                  = "Inbound"     # The direction of the traffic that the rule applies to, which is "Inbound" in this case, meaning it applies to incoming traffic to the resources associated with this NSG.
-    access                     = "Allow"       # The action to take when the rule matches traffic, which is "Allow" in this case, meaning that matching traffic will be allowed through the NSG.
-    protocol                   = "Tcp"         # The protocol that the rule applies to, which is "Tcp" in this case, meaning it applies to TCP traffic.
-    source_port_range          = "*"           # The source port range for the rule, which is set to "*" in this case, meaning it applies to traffic from any source port.
-    destination_port_range     = "4000"        # The destination port range for the rule, which is set to "4000" in this case, meaning it applies to traffic destined for port 4000 within the NSG.
-    source_address_prefix      = "*"           # The source address prefix for the rule, which is set to "*" in this case, meaning it applies to traffic from any source IP address (any devices).
-    destination_address_prefix = "*"           # The destination address prefix for the rule, which is set to "*" in this case, meaning it applies to traffic destined for any destination IP address (any resources, since the public IP is dynamic).
+    name                       = "HTTP"
+    priority                   = "1002"
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  # RULE 3: Allow HTTPS (port 443)
+  # Allows encrypted HTTPS web traffic reaching NGINX edge reverse proxy for SSL termination.
+  security_rule {
+    name                       = "HTTPS"
+    priority                   = "1003"
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
   }
 }
 

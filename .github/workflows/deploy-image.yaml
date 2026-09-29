@@ -39,6 +39,7 @@ jobs:
           - identity
           - ledger
           - billing
+          - nginx
 
     steps:
       - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
