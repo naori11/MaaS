@@ -365,8 +365,15 @@ resource "azurerm_key_vault" "maas_kv" {
   enable_rbac_authorization = true
 }
 
+# Define the role assignment for the home tenant to make CRUD operations on the key vault.
+# "azurerm_role_assignment" is the resource type used to assign a role to a principal (The home tenant in this case) at the resource level (Key Vault).
+resource "azurerm_role_assignment" "tf_kv_officer" {
+  role_definition_name = "Key Vault Secrets Officer"
+  scope                = azurerm_key_vault.maas_kv.id
+  principal_id        = data.azurerm_client_config.current.object_id
+}
+
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
 output "public_ip_address" {
   value = azurerm_public_ip.maas_public_ip.ip_address # Output the public IP address of the virtual machine, which can be used to access the MAAS cluster remotely.
 }
-
