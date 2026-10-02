@@ -368,9 +368,10 @@ resource "azurerm_key_vault" "maas_kv" {
 # Define the role assignment for the home tenant to make CRUD operations on the key vault.
 # "azurerm_role_assignment" is the resource type used to assign a role to a principal (The home tenant in this case) at the resource level (Key Vault).
 resource "azurerm_role_assignment" "tf_kv_officer" {
-  role_definition_name = "Key Vault Secrets Officer"
-  scope                = azurerm_key_vault.maas_kv.id
-  principal_id         = data.azurerm_client_config.current.object_id
+  role_definition_name = "Key Vault Secrets Officer"                      # Which role to assign (Allow CRUD operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                     # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = data.azurerm_client_config.current.object_id     # Who to assign the role to (the home tenant in this case) (Who?)
+
 }
 
 # -----------------------------------------
@@ -399,6 +400,13 @@ resource "azurerm_key_vault_secret" "app_secrets" {
   # Ensures the role assignment is complete before creating the secret.
   # This makes sure that terraform has write permissions before attempting to add the secret to the key vault.
   depends_on = [ azurerm_role_assignment.tf_kv_officer ]
+}
+
+# Define the role assignment for the virtual machine to read secrets from the key vault.
+resource "azurerm_role_assignment" "vm_kv_reader" {
+  role_definition_name = "Key Vault Secrets User"                                         # Which role to assign (Allow read operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                                     # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id   # Who to assign the role to (the virtual machine in this case) (Who?)
 }
 
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
