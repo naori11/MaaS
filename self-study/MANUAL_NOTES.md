@@ -17,6 +17,7 @@
 - [Part 4: Cloud Platform & Identity Management (Azure)](#part-4-cloud-platform--identity-management-azure)
   - [Azure Blob](#azure-blob)
   - [Azure Identity](#azure-identity)
+  - [Azure Key Vault](#azure-key-vault)
   - [SSH Keygen](#ssh-keygen)
 - [Part 5: CI/CD Pipelines & Automation (GitHub Actions)](#part-5-cicd-pipelines--automation-github-actions)
   - [Azure Container Registry (ACR)](#azure-container-registry-acr)
@@ -103,6 +104,7 @@
   - instead of calling the image name normally (e.g. - postgres), do the following:
 
   - for the postgres image itself:
+
     ```yaml
     healthcheck:
       test: ["shell", "command"] # Command to test database status (depends on database image pulled)
@@ -152,7 +154,7 @@
 > **Scenario 2:** If you delete your local `terraform.tfstate` file, but the Azure resources still exist, what happens the next time you run `terraform apply`?
 >
 > - Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
-> - But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests. 
+> - But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests.
 > - It does not recreate the state file, so the next time you run `terraform apply`, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using `terraform import`.
 
 > **If Developer A and Developer B both run `terraform apply` from their own laptops at the exact same time using local state, what is the risk to the Azure environment?**
@@ -195,19 +197,39 @@
 - It is used by Azure services to authenticate and authorize access to resources.
 
 ### Traditional Active Directory vs Microsoft Entra ID
-- Traditional Active Directory is on premises, while Microsoft Entra ID (formerly Azure Active Directory) is cloud-based.
+
+- **Traditional Active Directory** is on premises, while **Microsoft Entra ID** (formerly Azure Active Directory) is cloud-based.
 
 ### App Registration vs Enterprise Application
-- App registration is mainly for providing credentials for a specific app to access Azure resources. It handles `Authentication`.
-- App registration holds the Application ID and Client Secret.
-- Enterprise application is for assigning RBAC permissions to a group of users or service principals, such as the App Registration itself. It handles `Authorization`.
-- Enterprise application holds the actual RBAC roles and sign in logs. 
+
+- **App Registration:**
+  - A global definition/blueprint for the app.
+  - Stored in the home tenant where the app is built.
+  - Generates the `Application ID` (Client ID) and manages credentials (client secrets/certificates).
+  - It handles `Authentication`.
+- **Enterprise Application:**
+  - The local representation of the application inside a specific tenant. (Another tenant might be another company's tenant.)
+  - Represents the identity (the app itself) that gets assigned Azure RBAC roles, user-assignment policies, and Conditional Access.
+  - It handles `Authorization`.
+  - Enterprise application holds the actual RBAC roles and sign in logs.
+  - _Rule of thumb:_ 1 App Registration can have multiple Enterprise Applications across different customer tenants (Multi-tenant SaaS).
+
+### Entra Roles vs Azure RBAC
+
+- **Entra Roles (Directory Level):** Govern Entra ID objects.
+  - Examples: _Global Administrator_, _User Administrator_, _Application Administrator_.
+  - Actions: Reset user passwords, create security groups, verify custom domains.
+- **Azure RBAC (ARM / Infrastructure Level):** Govern Azure cloud resources.
+  - Examples: _Owner_, _Contributor_, _Storage Blob Data Contributor_.
+  - Actions: Restart VMs, read Key Vault secrets, deploy ARM/Bicep templates.
 
 ### Service Principal (Basically the same as Enterprise Application)
+
 - Service principal is a type of identity that represents an app or service, not a user.
 - It is used to authenticate and authorize access to Azure resources on behalf of the app or service, such as a VM instance, CI/CD pipeline runners, or other Azure services.
 
 ### Azure RBAC vs Microsoft Entra ID
+
 - Microsoft Entra ID is used to manage access to Azure resources at the `directory level`, such as assigning RBAC roles to groups of users or service principals.
   - Sample: Global Administrator, User Administrator, Application Administrator
   - Create new user accounts, reset passwornds, register new apps, manage group memberships, etc.
@@ -216,31 +238,35 @@
   - Deploy VMs, read secrets from Key Vault, pull container images, create databases, etc.
 
 ### Common Built-in Roles
+
 - Azure splits actions into two planes:
   - Control Plane (Management): Managing the resource itself, such as starting a VM, resizing a storage account, or deleting a resource.
   - Data Plane: Accessing the actual data inside a resource, such as reading secrets from Key Vault, reading rows in a database, pulling images from ACR.
 
-| Built-in Role | Plane | What It Can Do | What It Cannot Do |
-| --- | --- | --- | --- |
-| Reader | Control Plane | View existing resources and configurations | Make any changes or read sensitive data payloads |
-| Contributor | Control Plane | Create, update, restart, and delete resources | Grant/modify permissions (RBAC) to other users |
-| Owner | Control Plane | Full management access + grant permissions to others | — |
-| AcrPull | Data Plane | Pull container images from Azure Container Registry | Push images, delete repositories, manage ACR settings |
-| Key Vault Secrets User | Data Plane | Read secret values inside a Key Vault | Create or delete the Key Vault resource itself |
+| Built-in Role          | Plane         | What It Can Do                                       | What It Cannot Do                                     |
+| ---------------------- | ------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| Reader                 | Control Plane | View existing resources and configurations           | Make any changes or read sensitive data payloads      |
+| Contributor            | Control Plane | Create, update, restart, and delete resources        | Grant/modify permissions (RBAC) to other users        |
+| Owner                  | Control Plane | Full management access + grant permissions to others | —                                                     |
+| AcrPull                | Data Plane    | Pull container images from Azure Container Registry  | Push images, delete repositories, manage ACR settings |
+| Key Vault Secrets User | Data Plane    | Read secret values inside a Key Vault                | Create or delete the Key Vault resource itself        |
 
 ### Scope Hierarchy
+
 ```text
 Management Group
  └── Subscription
       └── Resource Group
            └── Individual Resource
 ```
+
 - Management Group: Managing access, policies, and compliance for multiple subscriptions.
 - Subscription: Biling and operational boundary.
 - Resource Group (RG): Logical container for resources, used for managing access, policies, and compliance sharing the same lifecycle.
 - Individual Resource: A specific Azure resource, such as a VM, storage account, or database.
 
 ## Managed Identities
+
 - Makes it easier to manage access to Azure resources without hardcoding credentials.
 - It transforms manual credential management into a more automated and secure process (similar to having a badge that verifies your identity)
 - It gives your code hosted in a VM access to Azure resources without needing to store credentials in the VM.
@@ -265,6 +291,58 @@ Management Group
   - The signed token is sent to Azure through Microsoft Entra ID.
   - Entra ID uses GitHub's public key to verify the token.
   - If the token is verified, Entra ID responds with an access token that disappears once the GitHub Actions workflow is complete.
+
+## Azure Key Vault
+
+- Azure Key Vault is a cloud-based service that allows you to store and manage cryptographic keys and secrets instead of manually storing them in your repository.
+- Applications would then safely fetch secrets from Azure Key Vault through HTTPS via authentication using Azure Identity.
+- Using Azure Key Vault allows you to set least privilege access control for your secrets, only allowing access to the necessary secrets.
+
+### Objects within Azure Key Vault
+
+- **Secrets:**
+  - Values typically injected within your application's environment.
+  - Database connection strings, JWT secrets, API keys.
+  - Usually stored as plaintext value through `.env` files or environment variables.
+- **Keys:**
+  - Asymmetric key pairs (public/private) used for encryption/decryption.
+- **Certificates:**
+  - SSL/TLS certificates, API Gateway domains.
+  - Public certificates used for verifying the identity of a service or user.
+
+### Management Plane vs Data Plane
+
+- **Management Plane:**
+  - Management plane is responsible for managing the lifecycle of resources, including provisioning, scaling, and monitoring.
+  - In Key Vault, management plane refers to the CRUD of the Key Vault itself, network firewalls, and resource tags.
+- **Data Plane:**
+  - Data plane is responsible for the actual data processing and storage.
+  - Refers to the CRUD of the actual secrets stored in the Key Vault.
+
+### Built-in RBAC Roles
+
+- **Key Vault Administrator:**
+  - Full management of data plane and permissions.
+- **Key Vault Secrets Officer:**
+  - Access to read, write, and delete secrets.
+- **Key Vault Secrets User:**
+  - Access to read secrets only.
+
+### RBAC Bootstrap & depends_on Race Condition
+- When creating a Key Vault with RBAC, no one would have data plane access by default.
+- The Service Principal used to create the Key Vault (Management Plane) may not have the necessary permissions to perform CRUD operations on the Key Vault (Data Plane).
+- The Service Principal should have atleast the `Key Vault Secrets Officer` role assigned to it to ensure it can perform CRUD operations on the Key Vault.
+- In Terraform, the `azurerm_key_vault_secret` resource must explicitly declare `depends_on = [azurerm_role_assignment.tf_kv_officer]`:
+  - Without `depends_on`, Terraform may attempt to write the secret before the role
+  assignment is created or before Entra ID role replication finishes (10–60s delay), causing
+  a `403 Forbidden`.
+
+### Injecting Secrets into the App
+- Secrets stored in Azure Key Vault can be accessed through:
+  - Direct SDK Integration: ([Azure Key Vault SDK](https://docs.microsoft.com/en-us/azure/key-vault/)) (Application code direct integration)
+  - Deployment-Time Injection: Through the spin-up of a VM instance using a managed identity or Azure CLI. 
+    - Managed Identity: The VM instance is assigned a managed identity, which can be used to authenticate with Azure Key Vault.
+    - Azure CLI: The VM instance is authenticated using the Azure CLI, which can be used to authenticate with Azure Key Vault.
 
 ## SSH Keygen
 
@@ -347,6 +425,7 @@ Management Group
 ### Why Does the Browser Say "Not Secure" on `https://localhost`?
 
 When testing `https://localhost` in the browser, you will see a red lock or warning:
+
 > **"Not secure - Your connection to this site is not secure"** (`NET::ERR_CERT_AUTHORITY_INVALID`)
 
 This is completely normal and expected when using **self-signed certificates**.
@@ -357,10 +436,10 @@ This is completely normal and expected when using **self-signed certificates**.
 
 A common misconception is that "Not Secure" means the connection is unencrypted. **It is not!**
 
-| Concept | What It Means | Is It Working on `https://localhost`? |
-| :--- | :--- | :--- |
-| **1. Encryption (Privacy)** | Scrambles data so nobody sniffing Wi-Fi/network can read your traffic (uses RSA-2048, AES-256). | **YES (100% Active)** |
-| **2. Identity (Trust)** | Proves the server actually belongs to the person claiming to own it. | **NO (Self-Signed)** |
+| Concept                     | What It Means                                                                                   | Is It Working on `https://localhost`? |
+| :-------------------------- | :---------------------------------------------------------------------------------------------- | :------------------------------------ |
+| **1. Encryption (Privacy)** | Scrambles data so nobody sniffing Wi-Fi/network can read your traffic (uses RSA-2048, AES-256). | **YES (100% Active)**                 |
+| **2. Identity (Trust)**     | Proves the server actually belongs to the person claiming to own it.                            | **NO (Self-Signed)**                  |
 
 ---
 
@@ -369,17 +448,17 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 1. Every operating system (Windows, macOS) and browser comes with a built-in list of **Trusted Root Certification Authorities** (e.g., DigiCert, Let's Encrypt, Google Trust Services, Sectigo).
 2. When you connect to `https://google.com`, Chrome looks at Google's certificate, sees it was signed by a trusted CA on its pre-approved list, and displays a normal lock.
 3. When you connect to `https://localhost` with our self-signed certificate, NGINX presents a certificate signed by **itself** (not a trusted CA).
-4. Chrome does not know who created this certificate, so it warns the user: 
-   > *"I can encrypt the traffic, but I cannot guarantee who owns this server."*
+4. Chrome does not know who created this certificate, so it warns the user:
+   > _"I can encrypt the traffic, but I cannot guarantee who owns this server."_
 
 ---
 
 ### Local Dev vs. Real Production
 
-* **Why we use self-signed certificates locally & on raw cloud IPs:**
+- **Why we use self-signed certificates locally & on raw cloud IPs:**
   - Certificate Authorities (like Let's Encrypt) **only issue certificates to real, registered domain names** (e.g., `maas-api.com`). They will **never** issue a certificate for `localhost` or a raw IP address (`https://20.198.42.15`).
   - Therefore, self-signed certificates are the universal industry standard for local development, Docker environments, and raw IP testing.
-* **How production makes it "Secure" (Green / Normal Lock):**
+- **How production makes it "Secure" (Green / Normal Lock):**
   1. Point a registered domain name (e.g. `api.maas.com`) to the Azure VM's public IP.
   2. Use **Let's Encrypt (Certbot)**, **Cloudflare**, or **Azure Key Vault** to issue a certificate signed by a recognized Certificate Authority.
   3. The browser verifies the CA signature, recognizes the authority, and removes the "Not Secure" warning.
@@ -462,15 +541,16 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 To transition from backend to DevOps/Cloud in the long run:
 
 1. Containerize Existing Projects: Add a Dockerfile and docker-compose.yml to your
-Coffeetory POS application. Document this in the repository. Containerization is
-the bedrock of modern DevOps.
+   Coffeetory POS application. Document this in the repository. Containerization is
+   the bedrock of modern DevOps.
 2. Add Observability / Telemetry: For KidSync or Coffeetory, set up basic telemetry.
-Even simple setups like exporting application logs to a CloudWatch/Azure Log
-Analytics workspace or hooking up Prometheus/Grafana will show you understand
-operations.
+   Even simple setups like exporting application logs to a CloudWatch/Azure Log
+   Analytics workspace or hooking up Prometheus/Grafana will show you understand
+   operations.
 3. Build a Multi-Tier Cloud Project: Create a small, new deployment using Terraform.
-For example, deploy a containerized backend on AWS ECS or Azure Container Apps,
-behind a load balancer, talking to a managed cloud database.
+   For example, deploy a containerized backend on AWS ECS or Azure Container Apps,
+   behind a load balancer, talking to a managed cloud database.
 4. Certifications (Optional but helpful for resume scanning): AWS Certified Cloud
-Practitioner / Solutions Architect Associate, or Microsoft Azure Fundamentals (AZ-
+   Practitioner / Solutions Architect Associate, or Microsoft Azure Fundamentals (AZ-
+
 900) / Administrator (AZ-104).
