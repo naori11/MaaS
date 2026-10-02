@@ -345,7 +345,28 @@ resource "azurerm_role_assignment" "vm_acr_pull" {
 
 }
 
+# -----------------------------------------
+# Azure Key Vault for MAAS Cluster
+# -----------------------------------------
+
+# Data source to get the current Azure client configuration (subscription ID, tenant ID, object ID, etc.)
+data "azurerm_client_config" "current" {}
+
+# Define the Azure Key Vault for the MAAS cluster
+# "azurerm_key_vault" is a resource that allows you to create and manage Azure Key Vaults.
+resource "azurerm_key_vault" "maas_kv" {
+  name                = "maas-kv-20261002"                                     # The name of the key vault to be created in Azure.
+  location            = azurerm_resource_group.maas_rg.location       # The Azure region where the key vault will be created.
+  resource_group_name = azurerm_resource_group.maas_rg.name           # The name of the resource group where the key vault will be created.
+  tenant_id           = data.azurerm_client_config.current.tenant_id  # The tenant ID of the Azure subscription.
+  sku_name            = "standard"                                    # The SKU name of the key vault (standard or premium). (Tier of the key vault)
+
+  # Use the modern Azure RBAC instead of the legacy Access Policies.
+  enable_rbac_authorization = true
+}
+
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
 output "public_ip_address" {
   value = azurerm_public_ip.maas_public_ip.ip_address # Output the public IP address of the virtual machine, which can be used to access the MAAS cluster remotely.
 }
+
