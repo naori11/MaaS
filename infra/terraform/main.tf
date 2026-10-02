@@ -337,12 +337,76 @@ resource "azurerm_container_registry" "maas_acr" {
 # "azurerm_role_assignment" is the resource type used to assign a role to a principal (VM identity) at the resource level (ACR).
 resource "azurerm_role_assignment" "vm_acr_pull" {
   # Which resource to assign the role to (ACR in this case) (Who?)
-  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id
+  principal_id = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id
   # Which role to assign (AcrPull allows the identity to pull container images) (What?)
   role_definition_name = "AcrPull"
   # What resource to assign the role to (ACR in this case) (Where?)
-  scope                = azurerm_container_registry.maas_acr.id
+  scope = azurerm_container_registry.maas_acr.id
 
+}
+
+# -----------------------------------------
+# Azure Key Vault for MAAS Cluster
+# -----------------------------------------
+
+# Data source to get the current Azure client configuration (subscription ID, tenant ID, object ID, etc.)
+data "azurerm_client_config" "current" {}
+
+# Define the Azure Key Vault for the MAAS cluster
+# "azurerm_key_vault" is a resource that allows you to create and manage Azure Key Vaults.
+resource "azurerm_key_vault" "maas_kv" {
+  name                = "maas-kv-20261002"                           # The name of the key vault to be created in Azure.
+  location            = azurerm_resource_group.maas_rg.location      # The Azure region where the key vault will be created.
+  resource_group_name = azurerm_resource_group.maas_rg.name          # The name of the resource group where the key vault will be created.
+  tenant_id           = data.azurerm_client_config.current.tenant_id # The tenant ID of the Azure subscription.
+  sku_name            = "standard"                                   # The SKU name of the key vault (standard or premium). (Tier of the key vault)
+
+  # Use the modern Azure RBAC instead of the legacy Access Policies.
+  enable_rbac_authorization = true
+}
+
+# Define the role assignment for the home tenant to make CRUD operations on the key vault.
+# "azurerm_role_assignment" is the resource type used to assign a role to a principal (The home tenant in this case) at the resource level (Key Vault).
+resource "azurerm_role_assignment" "tf_kv_officer" {
+  role_definition_name = "Key Vault Secrets Officer"                      # Which role to assign (Allow CRUD operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                     # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = data.azurerm_client_config.current.object_id     # Who to assign the role to (the home tenant in this case) (Who?)
+
+}
+
+# -----------------------------------------
+# Azure Key Vault Secrets Provisioning
+# -----------------------------------------
+
+# Define the secrets to be stored in the key vault.
+# Secrets are declared as variables under the "variables.tf" file.
+locals { # locals block is used to define local variables that can be used throughout the Terraform configuration.
+  app_secrets = { # app_secrets is a local variable that holds the secrets to be stored in the key vault.
+    "jwt-secret"            = var.jwt_secret # Referenced from the "variables.tf" file.
+    "xendit-secret-key"     = var.xendit_secret_key
+    "xendit-callback-token" = var.xendit_callback_token
+    "postgres-user"         = var.postgres_user
+    "postgres-password"     = var.postgres_password
+  }
+}
+
+# Create the secrets in the key vault.
+resource "azurerm_key_vault_secret" "app_secrets" {
+  for_each = local.app_secrets                  # Iterate over the app_secrets local variable and create a secret for each key-value pair.
+  name     = each.key                           # The name of the secret to be created in the key vault.
+  value    = each.value                         # The value of the secret to be stored in the key vault.
+  key_vault_id = azurerm_key_vault.maas_kv.id   # The ID of the key vault where the secret will be stored.
+
+  # Ensures the role assignment is complete before creating the secret.
+  # This makes sure that terraform has write permissions before attempting to add the secret to the key vault.
+  depends_on = [ azurerm_role_assignment.tf_kv_officer ]
+}
+
+# Define the role assignment for the virtual machine to read secrets from the key vault.
+resource "azurerm_role_assignment" "vm_kv_reader" {
+  role_definition_name = "Key Vault Secrets User"                                         # Which role to assign (Allow read operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                                     # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id   # Who to assign the role to (the virtual machine in this case) (Who?)
 }
 
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
