@@ -28,7 +28,12 @@
   - [NGINX](#nginx)
   - [Microservices Architecture](#microservices-architecture)
   - [SSL/TLS Certificates](#ssltls-certificates)
-- [Part 7: Notes to Self & Career Roadmap](#part-7-notes-to-self--career-roadmap)
+- [Part 7: Virtual Machine Deployment & Host Automation](#part-7-virtual-machine-deployment--host-automation)
+  - [Cloud-Init & VM Provisioning](#cloud-init--vm-provisioning)
+  - [VM Container Registry Access (ACR & Managed Identity)](#vm-container-registry-access-acr--managed-identity)
+  - [Reliable Deployments with systemd](#reliable-deployments-with-systemd)
+  - [Continuous Deployment (CD) Pipelines to VM](#continuous-deployment-cd-pipelines-to-vm)
+- [Part 8: Notes to Self & Career Roadmap](#part-8-notes-to-self--career-roadmap)
   - [Refresh on Networking Concepts](#refresh-on-networking-concepts--bro-you-know-all-of-these-from-3rd-year)
   - [Cloud Concepts](#cloud-concepts)
   - [Linux Commands & Concepts](#linux-commands--concepts)
@@ -465,7 +470,138 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 
 ---
 
-# Part 7: Notes to Self & Career Roadmap
+# Part 7: Virtual Machine Deployment & Host Automation
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## Cloud-Init & VM Provisioning
+
+### What is Cloud-Init and Custom Data in Azure?
+- `cloud-init` is a multi distribution method (some sort of automation tool) that runs on first boot to configure and customize a VM. ([cloud-init docs](https://docs.cloud-init.io/en/latest/index.html)) 
+- It supports a variety of configuration options, including setting hostnames, default users, SSH keys, network configs, and running custom scripts.
+
+- `custom-data` is a mechanism in Azure wherein you can pass custom configuration data (bash scripts or cloud-config yaml) to a VM during provisioning.
+- When custom-data fails to execute, Azure does not notify you nor Terraform would not receive a failure notification.
+- When custom-data is modified, terraform considers this as a new resource and will delete the old VM and recreate it with the updated `custom-data`.
+
+### VM Boot Lifecycle & Execution Order
+- Kernel Boot: Hardware and kernel initialization.
+- `Local | cloud-init-local`: Identifies cloud provider datasource. Runs before networking is up.
+- `Network | cloud-init (init)`: Networking comes up. Fetches metadata ad SSH keys.
+- `Config | cloud-config`: Runs configuration scripts (user creation, package repos).
+- `Final | cloud-final`: Where custom data is executed. Runs late in the boot process once networking is live and system services have initialized.
+
+### Troubleshooting Cloud-Init Scripts (`/var/log/cloud-init-output.log`)
+- When the script provided within `custom-data` fails to execute, Azure does not notify you nor Terraform would not receive a failure notification.
+
+- To verify what actually happened, check the logs within the VM:
+  
+  - `cat /var/log/cloud-init-output.log` : Shows the full output of all commands run by the `custom-data` script.
+  - `cat /var/log/cloud-init.log` : SHows the cloud-init system logs (steps, timings, errors).
+  - `cloud-init status --long` : Shows the status of cloud-init, including any errors or warnings.
+
+---
+
+## VM Container Registry Access (ACR & Managed Identity)
+
+### Private Container Registries (ACR) vs. Docker Hub
+- **Docker Hub** is similar to GitHub.
+  - Public by default. Images can be pulled publicly.
+  - Images travel across the public interet.
+  - Static usernames, passwords, and personal access tokens.
+- **ACR** is similar to Docker Hub, but it is private by default.
+  - ACR images are not publicly accessible.
+  - Traffic stays within the Azure network only.
+  - Integrated directly with Microsoft Entra ID (RBAC) & Managed Identity.
+
+### The `AcrPull` Role & RBAC Configuration
+- The `AcrPull` role is used to grant pull access (read-only access) to ACR images.
+  - It is assigned to users or groups via RBAC.
+- The `AcrPush` role is used to grant upload permissions (write access) to ACR images.
+  - Used by CI/CD pipelines such as GitHub Actions.
+#### Why Least Privilege Matters:
+- When an attacker gains access to a system with admin/owner or `AcrPush` permissions, they can upload malicious images to ACR, inject malware, or delete the image entirely.
+
+### Passwordless Pull via Managed Identity (`az acr login --identity`)
+- Traditionally, `az acr login` requires a username and password or personal access token `docker login -u <username> -p <password>`.
+- But this method is risky because passwords can be leaked within shell histories, .bash_history, config files, or logs.
+- Using System Assigned Managed Identity, you can use a service principal or user-assigned managed identity to authenticate without a password.
+  - `az acr login --identity` uses the system-assigned managed identity to authenticate.
+
+---
+
+## Reliable Deployments with systemd
+
+### Linux `systemd` Init System (`systemctl`)
+- The first process started by the linux kernel (PID 1).
+- Responsible for managing system startup, background services, and the entire lifecycle. (init system and service manager)
+- Every other services running within the system (SSH server, Docker daemon, networking, etc.) is a child process of the `systemd` init system.
+- If a service crashes or stops, `systemd` will automatically restart it.
+- When a machine boots up or shuts down, `systemd` will manage which services would start, wait, and shut down gracefully.
+
+### Managing Docker Compose with Custom `.service` Unit Files
+- Whenever a VM boots up or shuts down, and an existing container was started manually using `docker compose up`, `systemd` will not automatically restart it as it is not managed by `systemd`, unlike other services.
+- To hand over the control of a container to `systemd`, you can use a custom `.service` unit file.
+- You can create a custom `.service` unit file to define how `systemd` should manage the container.
+
+**Sample `.service` syntax (`/etc/systemd/system/maas.service`):**
+
+```ini
+[Unit] # Dependency & Order Management Section
+Description=MaaS Docker Compose Service
+Requires=docker.service # Does not start app/service until docker is running. Sets a hard dependency to docker.
+After=docker.service # Only start the app/service after confirming docker is fully initialized and listening.
+
+[Service] # Execution Mechanics
+Type=oneshot # Tells systemd that the service should be treated as a one-shot job, not a persistent service. It is just a command that runs the containers and exits back to the terminal, unlike a web server that stays running in the foreground.
+RemainAfterExit=yes # Consider the service as running even after the command exits, so systemd does not restart it automatically.
+WorkingDirectory=/home/azureuser/Maas # The directory where the Docker Compose files are located.
+ExecStartPre=/usr/bin/az acr login --name acrmaascluster --identity # Command that must succeed before starting the service. Refresh the managed identity login to ACR.
+ExecStart=/usr/bin/docker compose pull # Runs the deployment. Pull the latest Docker images from the ACR registry.
+ExecStart=/usr/bin/docker compose up -d # Start the Docker containers in detached mode.
+ExecStop=/usr/bin/docker compose down # When the VM shuts down or a manual stop command is made, stop the Docker containers.
+
+[Install] # Boot Hook
+WantedBy=multi-user.target # The service will be started once the dedicated runlevel is reached. In this case, the runlevel is `multi-user.target`, which is the default runlevel for a standard Linux system wherein the networking is up, the VM is accessible through SSH, and background daemons are running.
+```
+### Commands for Running and Diagnosing Services
+- `sudo systemctl start <service>` # Start the service right now in the current session.
+- `sudo systemctl enable <service>` # Enable the service to start automatically on boot.
+- `sudo systemctl restart <service>` # Restart the service.
+- `sudo systemctl stop <service>` # Stop the service.
+- `sudo systemctl status <service>` # Check the status of the service.
+- `sudo journalctl -u <service> -f` # View the live logs for the service.
+
+---
+
+## Continuous Deployment (CD) Pipelines to VM
+
+### GitHub Actions to VM Deployment Overview
+
+### Strategy A: SSH/SCP Push Deployment (Appleboy Action & Port 22)
+- This strategy uses a job to SSH into the VM and restarting the service.
+- Utilizes the `appleboy/ssh-action` to execute SSH commands.
+- A script is provided within the same job block to restart the service.
+
+### Strategy B: Self-Hosted GitHub Runners (Inbound Portless Architecture)
+- This method includes installing GitHub's runner software directly on the VM as a service.
+- The runner then makes an outbound HTTPS request to GitHub's API to fetch jobs.
+
+### Security Considerations: SSH Open Ports vs. Runner Agents
+
+| Dimension | SSH Push (`appleboy/ssh-action`) | Runner Agent (Self-Hosted Runner) |
+| :--- | :--- | :--- |
+| **Communication Direction** | **Inbound (Push):** GitHub Actions initiates connection to VM | **Outbound (Pull):** Runner daemon on VM polls GitHub via HTTPS |
+| **Inbound Ports Required** | **Port 22 (SSH)** must be open to the internet or GitHub IP ranges | **Zero inbound ports** needed (Port 22 can be completely closed in NSG) |
+| **Outbound Requirements** | Standard outbound rules | Outbound **HTTPS (Port 443)** to GitHub APIs |
+| **Network Exposure & Attack Surface** | **High:** Vulnerable to public IP port scans, brute-force SSH attacks, and SSH daemon exploits | **Low:** VM stays completely isolated behind private subnets and firewalls |
+| **Credential Management** | Private SSH Key must be stored in GitHub Secrets | No long-lived SSH private keys; uses short-lived tokens & VM Managed Identity |
+
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 8: Notes to Self & Career Roadmap
 
 [▲ Back to Table of Contents](#-table-of-contents)
 
