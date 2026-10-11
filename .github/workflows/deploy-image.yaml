@@ -122,13 +122,23 @@ jobs:
       - name: VM Container Update
         # Instead of using ssh to run commands on the VM, we use the Azure CLI to run commands directly on the VM.
         run: |
+          # Convert docker-compose.yaml to base64 and store it in COMPOSE_B64
+          # This allows us to pass the docker-compose.yaml content as an environment variable to the VM.
+          COMPOSE_B64=$(base64 -w 0 docker-compose.yaml)
+
           az vm run-command invoke \
             --resource-group rg-maas-cluster \
             --name vm-maas-cluster \
             --command-id RunShellScript \
             --scripts "
-              cd /home/azureuser/app || true
-              az acr login --name acrmaascluster --identity
+              mkdir -p /home/azureuser/app # Create the directory for the docker-compose.yaml file
+              echo $COMPOSE_B64 | base64 -d > /home/azureuser/docker-compose.yaml # Decode the base64 string and store it in docker-compose.yaml
+              chown -R azureuser:azureuser /home/azureuser/app # Change ownership of the directory to the azureuser user
+
+              az acr login --name acrmaascluster --identity # Refresh the ACR login credentials
+
+              # Pull the latest images from ACR and start the containers
+              cd /home/azureuser/app
               docker compose pull
               docker compose up -d --remove-orphans
             "
