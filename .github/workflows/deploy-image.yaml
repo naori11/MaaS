@@ -122,17 +122,17 @@ jobs:
       - name: VM Container Update
         # Instead of using ssh to run commands on the VM, we use the Azure CLI to run commands directly on the VM.
         run: |
-          # Convert docker-compose.yaml to base64 and store it in COMPOSE_B64
-          # This allows us to pass the docker-compose.yaml content as an environment variable to the VM.
-          COMPOSE_B64=$(base64 -w 0 docker-compose.yaml)
+          # Convert docker-compose.yml to base64 and store it in COMPOSE_B64
+          # This allows us to pass the docker-compose.yml content as an environment variable to the VM.
+          COMPOSE_B64=$(base64 -w 0 docker-compose.yml)
 
           az vm run-command invoke \
             --resource-group rg-maas-cluster \
             --name vm-maas-cluster \
             --command-id RunShellScript \
             --scripts "
-              mkdir -p /home/azureuser/app # Create the directory for the docker-compose.yaml file
-              echo $COMPOSE_B64 | base64 -d > /home/azureuser/docker-compose.yaml # Decode the base64 string and store it in docker-compose.yaml
+              mkdir -p /home/azureuser/app # Create the directory for the docker-compose.yml file
+              echo $COMPOSE_B64 | base64 -d > /home/azureuser/app/docker-compose.yml # Decode the base64 string and store it in docker-compose.yml
               chown -R azureuser:azureuser /home/azureuser/app # Change ownership of the directory to the azureuser user
 
               az login --identity
