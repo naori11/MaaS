@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import uuid4
 
-from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT, LEDGER_QUEUE_MAXSIZE
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -15,6 +14,8 @@ from sqlalchemy import DateTime, Float, String, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT, LEDGER_QUEUE_MAXSIZE
 
 logger = logging.getLogger(__name__)
 

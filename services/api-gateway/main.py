@@ -6,6 +6,11 @@ from time import time
 
 import httpx
 import jwt
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from jwt import InvalidTokenError
+
 from config import (
     BILLING_SERVICE_URL,
     IDENTITY_SERVICE_URL,
@@ -21,10 +26,6 @@ from config import (
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
 )
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from jwt import InvalidTokenError
 
 logger = logging.getLogger(__name__)
 
