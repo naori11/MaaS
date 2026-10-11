@@ -282,7 +282,46 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
 
     # Add the "azureuser" to the "docker" group to allow running Docker commands without needing to use "sudo".
     sudo usermod -aG docker azureuser
-    EOF
+
+    # Create the .service file for the Docker Compose application
+    cat <<'SERVICE' > /etc/systemd/system/maas-app.service
+    # Dependency & Order Management Section
+    [Unit]
+    Description=MaaS Docker Compose Service
+    # Does not start app/service until docker is running. Sets a hard dependency to docker.
+    Requires=docker.service
+    # Only start the app/service after confirming docker is fully initialized and listening.
+    After=docker.service
+
+    # Execution Mechanics
+    [Service]
+    # Tells systemd that the service should be treated as a one-shot job, not a persistent service. It is just a command that runs the containers and exits back to the terminal, unlike a web server that stays running in the foreground.
+    Type=oneshot
+    # Consider the service as running even after the command exits, so systemd does not restart it automatically.
+    RemainAfterExit=yes
+    # The directory where the Docker Compose files are located.
+    WorkingDirectory=/home/azureuser/app
+    # Commands that must succeed before starting the service. Refresh the managed identity login to ACR.
+    ExecStartPre=/usr/bin/az login --identity
+    ExecStartPre=/usr/bin/az acr login --name acrmaascluster
+    # Runs the deployment. Pull the latest Docker images from the ACR registry.
+    ExecStart=/usr/bin/docker compose pull
+    # Start the Docker containers in detached mode.
+    ExecStart=/usr/bin/docker compose up -d
+    # When the VM shuts down or a manual stop command is made, stop the Docker containers.
+    ExecStop=/usr/bin/docker compose down
+
+    # Boot Hook
+    [Install]
+    # The service will be started once the dedicated runlevel is reached. In this case, the runlevel is `multi-user.target`, which is the default runlevel for a standard Linux system wherein the networking is up, the VM is accessible through SSH, and background daemons are running.
+    WantedBy=multi-user.target
+
+EOF
+
+    # Reload systemd and enable the service on boot
+    systemctl daemon-reload
+    systemctl enable maas-app
+
   )
 
   # ---------------------------------------------------------------------------------------------------------
