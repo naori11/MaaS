@@ -240,46 +240,55 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
 
   # The "custom_data" field allows you to provide a script that will be executed on the virtual machine when it is first provisioned.
   # It updates the server and silently installs Docker and Docker Compose.
-  custom_data = base64encode(
-    <<-EOF
-    #!/bin/bash
-    sudo apt-get update -y # Update the package lists for upgrades and new package installations.
+  custom_data = base64encode(<<-EOF
+#!/bin/bash
+sudo apt-get update -y
+sudo apt-get install -y ca-certificates curl gnupg
 
-    # Install necessary packages to prepare the system for Docker installation, including:
-    # - ca-certificates: Ensures that the system can securely download packages over HTTPS.
-    # - curl: A command-line tool for transferring data with URLs, used to download the Docker GPG key.
-    # - gnupg: A tool for managing GPG keys, required to add the Docker GPG key to the system's keyring.
-    sudo apt-get install -y ca-certificates curl gnupg
+# Set up Docker repository
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    # Set up the Docker repository by adding the Docker GPG key and the Docker APT repository to the system's package sources.
-    # This allows the system to securely download and install Docker packages from the official Docker repository.
-    sudo install -m 0755 -d /etc/apt/keyrings
+sudo apt-get update -y
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-    # The "curl" command is used to download the Docker GPG key from the official Docker repository.
-    # The key is then processed with "gpg --dearmor" to convert it into a format suitable for use as an APT keyring, and saved to "/etc/apt/keyrings/docker.gpg".
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# Install Azure CLI for Identity Management
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-    # Set the permissions on the Docker GPG keyring file to ensure that it is readable by all users, which is necessary for the APT package manager to verify the authenticity of packages from the Docker repository.
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+# Add azureuser to docker group
+sudo usermod -aG docker azureuser
 
-    # The "echo" command is used to add the Docker APT repository to the system's package sources.
-    # It constructs a line that specifies the repository URL, the distribution (based on the current Ubuntu release), and the component (stable), and writes this line to a new file in "/etc/apt/sources.list.d/docker.list".
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# Create app directory
+mkdir -p /home/azureuser/app
+chown -R azureuser:azureuser /home/azureuser/app
 
-    # Run the update command again to refresh the package lists, now including the Docker repository, so that the system is aware of the latest Docker packages available for installation.
-    sudo apt-get update -y
+# Create the systemd service file for the Docker Compose application
+cat <<'SERVICE' > /etc/systemd/system/maas-app.service
+[Unit]
+Description=MaaS Docker Compose Service
+Requires=docker.service
+After=docker.service
 
-    # Finally, install Docker and its related components, including:
-    # - docker-ce: The Docker Engine, which is the core component of Docker that allows you to run and manage containers.
-    # - docker-ce-cli: The command-line interface for Docker, which provides the "docker" command used to interact with the Docker Engine.
-    # - containerd.io: A container runtime that Docker uses to manage container lifecycle.
-    # - docker-buildx-plugin: A plugin for Docker Buildx, which is a tool for building multi-platform Docker images.
-    # - docker-compose-plugin: A plugin for Docker Compose, which is a tool for defining and running multi-container Docker applications.
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/azureuser/app
+ExecStartPre=/usr/bin/az login --identity
+ExecStartPre=/usr/bin/az acr login --name acrmaascluster
+ExecStart=/usr/bin/docker compose pull
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
 
-    # Add the "azureuser" to the "docker" group to allow running Docker commands without needing to use "sudo".
-    sudo usermod -aG docker azureuser
-    EOF
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+# Reload systemd and enable the service on boot
+systemctl daemon-reload
+systemctl enable maas-app
+EOF
   )
 
   # ---------------------------------------------------------------------------------------------------------

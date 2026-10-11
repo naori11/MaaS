@@ -89,7 +89,7 @@ def _database_url_from_env() -> str:
 
 def _parse_iso8601_utc(value: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Malformed payload") from exc
 

@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
 from time import time
 
@@ -176,7 +176,7 @@ def _build_ledger_event(request_id: str, path: str, request_payload: dict, respo
         "operand_b": request_payload["operand_b"],
         "result": response_payload["result"],
         "math_transaction_id": str(uuid.uuid4()),
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
 

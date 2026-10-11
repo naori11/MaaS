@@ -25,7 +25,7 @@ def test_divide_valid_payload_returns_expected_contract():
     assert body["result"] == 42
 
     UUID(body["transaction_id"])
-    datetime.fromisoformat(body["timestamp"].replace("Z", "+00:00"))
+    datetime.fromisoformat(body["timestamp"])
 
 
 def test_divide_rejects_divide_by_zero_with_400():

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
@@ -41,5 +41,5 @@ def multiply(payload: MultiplicationRequest) -> MultiplicationResponse:
         operation="multiplication",
         result=_normalize_result(raw_result),
         transaction_id=str(uuid4()),
-        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
