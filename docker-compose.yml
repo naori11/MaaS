@@ -4,6 +4,7 @@ services:
   # ---------------------------------------------
   nginx:
     build: ./services/nginx # Directory containing the Dockerfile for the Nginx proxy service
+    image: acrmaascluster.azurecr.io/nginx:latest # Image name for the Nginx proxy service that will be pulled from the Azure Container Registry
     ports:
       - "80:80"
       - "443:443"
@@ -16,6 +17,7 @@ services:
 
   api-gateway: # Name of the service
     build: ./services/api-gateway # Directory containing the Dockerfile for the API Gateway service
+    image: acrmaascluster.azurecr.io/api-gateway:latest # Image name for the API Gateway service that will be pulled from the Azure Container Registry
     # Since the API Gateway is not intended to be accessed directly from outside the Docker network,
     # And the Nginx proxy is the entry point for clients,
     # we do not expose it to the host via a port.
@@ -52,6 +54,7 @@ services:
 
   identity: # Name of the service
     build: ./services/identity
+    image: acrmaascluster.azurecr.io/identity:latest # Image name for the identity service that will be pulled from the Azure Container Registry
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ledger_db
       - JWT_SECRET=${JWT_SECRET}
@@ -65,26 +68,31 @@ services:
   # Uncomment the ports only for direct access in testing or development.
   math-add: # Name of the service
     build: ./services/math-add # Directory containing the Dockerfile for the math-add service
+    image: acrmaascluster.azurecr.io/math-add:latest # Image name for the math-add service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8011:8000"  # Expose port 8000 of the container to port 8011 on the host
 
   math-subtract: # Name of the service
     build: ./services/math-subtract # Directory containing the Dockerfile for the math-subtract service
+    image: acrmaascluster.azurecr.io/math-subtract:latest # Image name for the math-subtract service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8012:8000"  # Expose port 8000 of the container to port 8012 on the host
 
   math-multiply: # Name of the service
     build: ./services/math-multiply # Directory containing the Dockerfile for the math-multiply service
+    image: acrmaascluster.azurecr.io/math-multiply:latest # Image name for the math-multiply service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8013:8000"  # Expose port 8000 of the container to port 8013 on the host
 
   math-divide: # Name of the service
     build: ./services/math-divide # Directory containing the Dockerfile for the math-divide service
+    image: acrmaascluster.azurecr.io/math-divide:latest # Image name for the math-divide service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8014:8000"  # Expose port 8000 of the container to port 8014 on the host
 
   ledger:
     build: ./services/ledger # Directory containing the Dockerfile for the ledger service
+    image: acrmaascluster.azurecr.io/ledger:latest # Image name for the ledger service that will be pulled from the Azure Container Registry
     # Port is commented out because the ledger service is not intended to be accessed directly from outside the Docker network.
     # It will be accessed by the API Gateway and other services internally.
     # ports:
@@ -97,6 +105,7 @@ services:
 
   billing:
     build: ./services/billing
+    image: acrmaascluster.azurecr.io/billing:latest # Image name for the billing service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8031:8000"  # Expose port 8000 of the container to port 8031 on the host
     environment:
