@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 from uuid import uuid4
 
 import jwt
+from config import DATABASE_URL, JWT_ALGORITHM, JWT_EXPIRES_SECONDS, JWT_SECRET
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -18,8 +19,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.pool import StaticPool
-
-from config import DATABASE_URL, JWT_ALGORITHM, JWT_EXPIRES_SECONDS, JWT_SECRET
 
 Password = Annotated[str, StringConstraints(min_length=8)]
 

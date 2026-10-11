@@ -1,16 +1,11 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
 from time import time
 
 import httpx
 import jwt
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from jwt import InvalidTokenError
-
 from config import (
     BILLING_SERVICE_URL,
     IDENTITY_SERVICE_URL,
@@ -26,6 +21,10 @@ from config import (
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
 )
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from jwt import InvalidTokenError
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +175,7 @@ def _build_ledger_event(request_id: str, path: str, request_payload: dict, respo
         "operand_b": request_payload["operand_b"],
         "result": response_payload["result"],
         "math_transaction_id": str(uuid.uuid4()),
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import uuid4
 
+from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT, LEDGER_QUEUE_MAXSIZE
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -14,8 +15,6 @@ from sqlalchemy import DateTime, Float, String, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT, LEDGER_QUEUE_MAXSIZE
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +88,7 @@ def _database_url_from_env() -> str:
 
 def _parse_iso8601_utc(value: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Malformed payload") from exc
 
