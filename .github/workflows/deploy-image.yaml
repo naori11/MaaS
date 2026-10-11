@@ -5,12 +5,12 @@ on: # The events that trigger the workflow.
     branches:
       - master
     paths-ignore:
-      - '**.md'
-      - 'self-study/**'
-      - 'README.md'
-      - 'AGENTS.md'
-      - 'ARCHITECTURE.md'
-      - 'CLAUDE.md'
+      - "**.md"
+      - "self-study/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "ARCHITECTURE.md"
+      - "CLAUDE.md"
   workflow_dispatch: # Trigger the workflow manually from the GitHub Actions UI.
 
 # OIDC PERMISSIONS:
@@ -135,8 +135,19 @@ jobs:
               echo $COMPOSE_B64 | base64 -d > /home/azureuser/app/docker-compose.yml # Decode the base64 string and store it in docker-compose.yml
               chown -R azureuser:azureuser /home/azureuser/app # Change ownership of the directory to the azureuser user
 
+              # Authenticate with Azure using the managed identity
               az login --identity
               az acr login --name acrmaascluster  # Refresh the ACR login credentials
+
+              # Fetch secrets from Key Vault into .env
+              VAULT='maas-kv-20261002'
+              cat <<EOF > /home/azureuser/app/.env
+              POSTGRES_USER=\$(az keyvault secret show --vault-name \$VAULT --name postgres-user --query value -o tsv)
+              POSTGRES_PASSWORD=\$(az keyvault secret show --vault-name \$VAULT --name postgres-password --query value -o tsv)
+              JWT_SECRET=\$(az keyvault secret show --vault-name \$VAULT --name jwt-secret --query value -o tsv)
+              XENDIT_SECRET_KEY=\$(az keyvault secret show --vault-name \$VAULT --name xendit-secret-key --query value -o tsv)
+              XENDIT_CALLBACK_TOKEN=\$(az keyvault secret show --vault-name \$VAULT --name xendit-callback-token --query value -o tsv)
+              EOF
 
               # Pull the latest images from ACR and start the containers
               cd /home/azureuser/app
