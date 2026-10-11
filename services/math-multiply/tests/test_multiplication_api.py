@@ -25,7 +25,7 @@ def test_multiply_valid_integer_payload_returns_expected_contract():
     assert body["result"] == 42
 
     UUID(body["transaction_id"])
-    datetime.fromisoformat(body["timestamp"].replace("Z", "+00:00"))
+    datetime.fromisoformat(body["timestamp"])
 
 
 def test_multiply_valid_decimal_payload_returns_expected_result():
