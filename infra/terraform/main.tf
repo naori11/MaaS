@@ -277,6 +277,9 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
     # - docker-compose-plugin: A plugin for Docker Compose, which is a tool for defining and running multi-container Docker applications.
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+    # Install Azure CLI for Identity Management
+    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
     # Add the "azureuser" to the "docker" group to allow running Docker commands without needing to use "sudo".
     sudo usermod -aG docker azureuser
     EOF
