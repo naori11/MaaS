@@ -135,7 +135,8 @@ jobs:
               echo $COMPOSE_B64 | base64 -d > /home/azureuser/docker-compose.yaml # Decode the base64 string and store it in docker-compose.yaml
               chown -R azureuser:azureuser /home/azureuser/app # Change ownership of the directory to the azureuser user
 
-              az acr login --name acrmaascluster --identity # Refresh the ACR login credentials
+              az login --identity
+              az acr login --name acrmaascluster  # Refresh the ACR login credentials
 
               # Pull the latest images from ACR and start the containers
               cd /home/azureuser/app
