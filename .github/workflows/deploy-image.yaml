@@ -120,36 +120,21 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }} # The subscription ID for the Azure service principal.
 
       - name: VM Container Update
+        # Due to YAML syntax limitations, we use a separate bash script to run commands on the VM.
         # Instead of using ssh to run commands on the VM, we use the Azure CLI to run commands directly on the VM.
         run: |
           # Convert docker-compose.yml to base64 and store it in COMPOSE_B64
           # This allows us to pass the docker-compose.yml content as an environment variable to the VM.
           COMPOSE_B64=$(base64 -w 0 docker-compose.yml)
 
+          # Copy the bash deployment script from the repository template and update it with the base64-encoded docker-compose.yml content.
+          cp .github/scripts/deploy.sh deploy.sh
+          # Replace the placeholder in the deployment script with the actual base64-encoded docker-compose.yml content.
+          sed -i "s|__COMPOSE_B64__|$COMPOSE_B64|g" deploy.sh
+
+          # 3. Ship the script file directly to the Azure VM via @deploy.sh
           az vm run-command invoke \
             --resource-group rg-maas-cluster \
             --name vm-maas-cluster \
             --command-id RunShellScript \
-            --scripts "
-              mkdir -p /home/azureuser/app # Create the directory for the docker-compose.yml file
-              echo '$COMPOSE_B64' | base64 -d > /home/azureuser/app/docker-compose.yml # Decode the base64 string and store it in docker-compose.yml
-
-              # Authenticate with Azure using the managed identity
-              az login --identity
-              az acr login --name acrmaascluster  # Refresh the ACR login credentials
-
-              # Fetch secrets from Key Vault into .env
-              VAULT='maas-kv-20261002'
-              echo "POSTGRES_USER=\$(az keyvault secret show --vault-name \$VAULT --name postgres-user --query value -o tsv)" > /home/azureuser/app/.env
-              echo "POSTGRES_PASSWORD=\$(az keyvault secret show --vault-name \$VAULT --name postgres-password --query value -o tsv)" >> /home/azureuser/app/.env
-              echo "JWT_SECRET=\$(az keyvault secret show --vault-name \$VAULT --name jwt-secret --query value -o tsv)" >> /home/azureuser/app/.env
-              echo "XENDIT_SECRET_KEY=\$(az keyvault secret show --vault-name \$VAULT --name xendit-secret-key --query value -o tsv)" >> /home/azureuser/app/.env
-              echo "XENDIT_CALLBACK_TOKEN=\$(az keyvault secret show --vault-name \$VAULT --name xendit-callback-token --query value -o tsv)" >> /home/azureuser/app/.env
-
-              # Set ownership and secure permissions for app directory and .env
-              chown -R azureuser:azureuser /home/azureuser/app
-              chmod 600 /home/azureuser/app/.env
-
-              # Delegate deployment to systemd
-              systemctl restart maas-app
-            "
+            --scripts @deploy.sh
