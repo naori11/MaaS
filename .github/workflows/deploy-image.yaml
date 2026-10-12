@@ -132,8 +132,7 @@ jobs:
             --command-id RunShellScript \
             --scripts "
               mkdir -p /home/azureuser/app # Create the directory for the docker-compose.yml file
-              echo $COMPOSE_B64 | base64 -d > /home/azureuser/app/docker-compose.yml # Decode the base64 string and store it in docker-compose.yml
-              chown -R azureuser:azureuser /home/azureuser/app # Change ownership of the directory to the azureuser user
+              echo '$COMPOSE_B64' | base64 -d > /home/azureuser/app/docker-compose.yml # Decode the base64 string and store it in docker-compose.yml
 
               # Authenticate with Azure using the managed identity
               az login --identity
@@ -141,16 +140,16 @@ jobs:
 
               # Fetch secrets from Key Vault into .env
               VAULT='maas-kv-20261002'
-              cat <<EOF > /home/azureuser/app/.env
-              POSTGRES_USER=\$(az keyvault secret show --vault-name \$VAULT --name postgres-user --query value -o tsv)
-              POSTGRES_PASSWORD=\$(az keyvault secret show --vault-name \$VAULT --name postgres-password --query value -o tsv)
-              JWT_SECRET=\$(az keyvault secret show --vault-name \$VAULT --name jwt-secret --query value -o tsv)
-              XENDIT_SECRET_KEY=\$(az keyvault secret show --vault-name \$VAULT --name xendit-secret-key --query value -o tsv)
-              XENDIT_CALLBACK_TOKEN=\$(az keyvault secret show --vault-name \$VAULT --name xendit-callback-token --query value -o tsv)
-              EOF
+              echo "POSTGRES_USER=\$(az keyvault secret show --vault-name \$VAULT --name postgres-user --query value -o tsv)" > /home/azureuser/app/.env
+              echo "POSTGRES_PASSWORD=\$(az keyvault secret show --vault-name \$VAULT --name postgres-password --query value -o tsv)" >> /home/azureuser/app/.env
+              echo "JWT_SECRET=\$(az keyvault secret show --vault-name \$VAULT --name jwt-secret --query value -o tsv)" >> /home/azureuser/app/.env
+              echo "XENDIT_SECRET_KEY=\$(az keyvault secret show --vault-name \$VAULT --name xendit-secret-key --query value -o tsv)" >> /home/azureuser/app/.env
+              echo "XENDIT_CALLBACK_TOKEN=\$(az keyvault secret show --vault-name \$VAULT --name xendit-callback-token --query value -o tsv)" >> /home/azureuser/app/.env
 
-              # Pull the latest images from ACR and start the containers
-              cd /home/azureuser/app
-              docker compose pull
-              docker compose up -d --remove-orphans
+              # Set ownership and secure permissions for app directory and .env
+              chown -R azureuser:azureuser /home/azureuser/app
+              chmod 600 /home/azureuser/app/.env
+
+              # Delegate deployment to systemd
+              systemctl restart maas-app
             "
