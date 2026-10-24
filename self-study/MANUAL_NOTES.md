@@ -33,7 +33,12 @@
   - [VM Container Registry Access (ACR & Managed Identity)](#vm-container-registry-access-acr--managed-identity)
   - [Reliable Deployments with systemd](#reliable-deployments-with-systemd)
   - [Continuous Deployment (CD) Pipelines to VM](#continuous-deployment-cd-pipelines-to-vm)
-- [Part 8: Notes to Self & Career Roadmap](#part-8-notes-to-self--career-roadmap)
+- [Part 8: Azure Observability (Monitor & Log Analytics)](#part-8-azure-observability-monitor--log-analytics)
+  - [The Concept of Centralized Logging](#the-concept-of-centralized-logging)
+  - [Ingesting Docker Logs](#ingesting-docker-logs)
+  - [Kusto Query Language (KQL)](#kusto-query-language-kql)
+  - [Application Insights](#application-insights)
+- [Part 9: Notes to Self & Career Roadmap](#part-9-notes-to-self--career-roadmap)
   - [Refresh on Networking Concepts](#refresh-on-networking-concepts--bro-you-know-all-of-these-from-3rd-year)
   - [Cloud Concepts](#cloud-concepts)
   - [Linux Commands & Concepts](#linux-commands--concepts)
@@ -278,16 +283,18 @@ Management Group
 - Basically, a service (Azure Instance Metadata Service [IMDS]) is listening within Azure's hypervisor. It is used and accessed by the VMs to provide identity and access to Azure resources. The application code requests for a short lived Microsoft Entra ID token that they use to authenticate with Azure services.
 
 ### User Assigned vs System Assigned Managed Identity
-- User Assigned: 
+
+- User Assigned:
   - 1 is to many resources.
   - Created as an independent resource in a resource group.
   - Existence is independent of the resource it is assigned to.
-- System Assigned: 
+- System Assigned:
   - 1 is to 1 resource.
   - Enabled directly as a toggle on the Azure Resource.
   - If resource is deleted, the identity is automatically removed.
 
 ## OpenID Connect (OIDC) for GitHub Actions
+
 - Usually, connecting GitHub actions to Azure resources requires a service principal or managed identity with a client secret and pasting it directly into the GitHub Repository Secrets.
 - But instead, you can use OIDC to authenticate without a client secret.
 - OIDC works through the following process:
@@ -334,18 +341,20 @@ Management Group
   - Access to read secrets only.
 
 ### RBAC Bootstrap & depends_on Race Condition
+
 - When creating a Key Vault with RBAC, no one would have data plane access by default.
 - The Service Principal used to create the Key Vault (Management Plane) may not have the necessary permissions to perform CRUD operations on the Key Vault (Data Plane).
 - The Service Principal should have atleast the `Key Vault Secrets Officer` role assigned to it to ensure it can perform CRUD operations on the Key Vault.
 - In Terraform, the `azurerm_key_vault_secret` resource must explicitly declare `depends_on = [azurerm_role_assignment.tf_kv_officer]`:
   - Without `depends_on`, Terraform may attempt to write the secret before the role
-  assignment is created or before Entra ID role replication finishes (10–60s delay), causing
-  a `403 Forbidden`.
+    assignment is created or before Entra ID role replication finishes (10–60s delay), causing
+    a `403 Forbidden`.
 
 ### Injecting Secrets into the App
+
 - Secrets stored in Azure Key Vault can be accessed through:
   - Direct SDK Integration: ([Azure Key Vault SDK](https://docs.microsoft.com/en-us/azure/key-vault/)) (Application code direct integration)
-  - Deployment-Time Injection: Through the spin-up of a VM instance using a managed identity or Azure CLI. 
+  - Deployment-Time Injection: Through the spin-up of a VM instance using a managed identity or Azure CLI.
     - Managed Identity: The VM instance is assigned a managed identity, which can be used to authenticate with Azure Key Vault.
     - Azure CLI: The VM instance is authenticated using the Azure CLI, which can be used to authenticate with Azure Key Vault.
 
@@ -353,7 +362,7 @@ Management Group
 
 - `ssh-keygen -t rsa -b 4096 -C "sample@email.com"` | command for creating an SSH key pair for your local machine
 - When command is run, it generates an `id_rsa.pub` (public key) and `id_rsa` (private key)
-- Layman concept: `id_rsa.pub` is the lock and `id_rsa` is your key to the lock. You provide the lock in a VM instance. 
+- Layman concept: `id_rsa.pub` is the lock and `id_rsa` is your key to the lock. You provide the lock in a VM instance.
 - When you try to connect via SSH, your local machine uses the key to verify the signature based on the lock provided. Once verified, you will be given access to the VM without entering a password.
 
 <div style="page-break-after: always;"></div>
@@ -477,7 +486,8 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 ## Cloud-Init & VM Provisioning
 
 ### What is Cloud-Init and Custom Data in Azure?
-- `cloud-init` is a multi distribution method (some sort of automation tool) that runs on first boot to configure and customize a VM. ([cloud-init docs](https://docs.cloud-init.io/en/latest/index.html)) 
+
+- `cloud-init` is a multi distribution method (some sort of automation tool) that runs on first boot to configure and customize a VM. ([cloud-init docs](https://docs.cloud-init.io/en/latest/index.html))
 - It supports a variety of configuration options, including setting hostnames, default users, SSH keys, network configs, and running custom scripts.
 
 - `custom-data` is a mechanism in Azure wherein you can pass custom configuration data (bash scripts or cloud-config yaml) to a VM during provisioning.
@@ -485,6 +495,7 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 - When custom-data is modified, terraform considers this as a new resource and will delete the old VM and recreate it with the updated `custom-data`.
 
 ### VM Boot Lifecycle & Execution Order
+
 - Kernel Boot: Hardware and kernel initialization.
 - `Local | cloud-init-local`: Identifies cloud provider datasource. Runs before networking is up.
 - `Network | cloud-init (init)`: Networking comes up. Fetches metadata ad SSH keys.
@@ -492,10 +503,11 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 - `Final | cloud-final`: Where custom data is executed. Runs late in the boot process once networking is live and system services have initialized.
 
 ### Troubleshooting Cloud-Init Scripts (`/var/log/cloud-init-output.log`)
+
 - When the script provided within `custom-data` fails to execute, Azure does not notify you nor Terraform would not receive a failure notification.
 
 - To verify what actually happened, check the logs within the VM:
-  
+
   - `cat /var/log/cloud-init-output.log` : Shows the full output of all commands run by the `custom-data` script.
   - `cat /var/log/cloud-init.log` : SHows the cloud-init system logs (steps, timings, errors).
   - `cloud-init status --long` : Shows the status of cloud-init, including any errors or warnings.
@@ -505,6 +517,7 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 ## VM Container Registry Access (ACR & Managed Identity)
 
 ### Private Container Registries (ACR) vs. Docker Hub
+
 - **Docker Hub** is similar to GitHub.
   - Public by default. Images can be pulled publicly.
   - Images travel across the public interet.
@@ -515,14 +528,18 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
   - Integrated directly with Microsoft Entra ID (RBAC) & Managed Identity.
 
 ### The `AcrPull` Role & RBAC Configuration
+
 - The `AcrPull` role is used to grant pull access (read-only access) to ACR images.
   - It is assigned to users or groups via RBAC.
 - The `AcrPush` role is used to grant upload permissions (write access) to ACR images.
   - Used by CI/CD pipelines such as GitHub Actions.
+
 #### Why Least Privilege Matters:
+
 - When an attacker gains access to a system with admin/owner or `AcrPush` permissions, they can upload malicious images to ACR, inject malware, or delete the image entirely.
 
 ### Passwordless Pull via Managed Identity (`az acr login --identity`)
+
 - Traditionally, `az acr login` requires a username and password or personal access token `docker login -u <username> -p <password>`.
 - But this method is risky because passwords can be leaked within shell histories, .bash_history, config files, or logs.
 - Using System Assigned Managed Identity, you can use a service principal or user-assigned managed identity to authenticate without a password.
@@ -533,6 +550,7 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 ## Reliable Deployments with systemd
 
 ### Linux `systemd` Init System (`systemctl`)
+
 - The first process started by the linux kernel (PID 1).
 - Responsible for managing system startup, background services, and the entire lifecycle. (init system and service manager)
 - Every other services running within the system (SSH server, Docker daemon, networking, etc.) is a child process of the `systemd` init system.
@@ -540,6 +558,7 @@ A common misconception is that "Not Secure" means the connection is unencrypted.
 - When a machine boots up or shuts down, `systemd` will manage which services would start, wait, and shut down gracefully.
 
 ### Managing Docker Compose with Custom `.service` Unit Files
+
 - Whenever a VM boots up or shuts down, and an existing container was started manually using `docker compose up`, `systemd` will not automatically restart it as it is not managed by `systemd`, unlike other services.
 - To hand over the control of a container to `systemd`, you can use a custom `.service` unit file.
 - You can create a custom `.service` unit file to define how `systemd` should manage the container.
@@ -564,7 +583,9 @@ ExecStop=/usr/bin/docker compose down # When the VM shuts down or a manual stop 
 [Install] # Boot Hook
 WantedBy=multi-user.target # The service will be started once the dedicated runlevel is reached. In this case, the runlevel is `multi-user.target`, which is the default runlevel for a standard Linux system wherein the networking is up, the VM is accessible through SSH, and background daemons are running.
 ```
+
 ### Commands for Running and Diagnosing Services
+
 - `sudo systemctl start <service>` # Start the service right now in the current session.
 - `sudo systemctl enable <service>` # Enable the service to start automatically on boot.
 - `sudo systemctl restart <service>` # Restart the service.
@@ -579,29 +600,196 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
 ### GitHub Actions to VM Deployment Overview
 
 ### Strategy A: SSH/SCP Push Deployment (Appleboy Action & Port 22)
+
 - This strategy uses a job to SSH into the VM and restarting the service.
 - Utilizes the `appleboy/ssh-action` to execute SSH commands.
 - A script is provided within the same job block to restart the service.
 
 ### Strategy B: Self-Hosted GitHub Runners (Inbound Portless Architecture)
+
 - This method includes installing GitHub's runner software directly on the VM as a service.
 - The runner then makes an outbound HTTPS request to GitHub's API to fetch jobs.
 
 ### Security Considerations: SSH Open Ports vs. Runner Agents
 
-| Dimension | SSH Push (`appleboy/ssh-action`) | Runner Agent (Self-Hosted Runner) |
-| :--- | :--- | :--- |
-| **Communication Direction** | **Inbound (Push):** GitHub Actions initiates connection to VM | **Outbound (Pull):** Runner daemon on VM polls GitHub via HTTPS |
-| **Inbound Ports Required** | **Port 22 (SSH)** must be open to the internet or GitHub IP ranges | **Zero inbound ports** needed (Port 22 can be completely closed in NSG) |
-| **Outbound Requirements** | Standard outbound rules | Outbound **HTTPS (Port 443)** to GitHub APIs |
-| **Network Exposure & Attack Surface** | **High:** Vulnerable to public IP port scans, brute-force SSH attacks, and SSH daemon exploits | **Low:** VM stays completely isolated behind private subnets and firewalls |
-| **Credential Management** | Private SSH Key must be stored in GitHub Secrets | No long-lived SSH private keys; uses short-lived tokens & VM Managed Identity |
+| Dimension                             | SSH Push (`appleboy/ssh-action`)                                                               | Runner Agent (Self-Hosted Runner)                                             |
+| :------------------------------------ | :--------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- |
+| **Communication Direction**           | **Inbound (Push):** GitHub Actions initiates connection to VM                                  | **Outbound (Pull):** Runner daemon on VM polls GitHub via HTTPS               |
+| **Inbound Ports Required**            | **Port 22 (SSH)** must be open to the internet or GitHub IP ranges                             | **Zero inbound ports** needed (Port 22 can be completely closed in NSG)       |
+| **Outbound Requirements**             | Standard outbound rules                                                                        | Outbound **HTTPS (Port 443)** to GitHub APIs                                  |
+| **Network Exposure & Attack Surface** | **High:** Vulnerable to public IP port scans, brute-force SSH attacks, and SSH daemon exploits | **Low:** VM stays completely isolated behind private subnets and firewalls    |
+| **Credential Management**             | Private SSH Key must be stored in GitHub Secrets                                               | No long-lived SSH private keys; uses short-lived tokens & VM Managed Identity |
 
 <div style="page-break-after: always;"></div>
 
 ---
 
-# Part 8: Notes to Self & Career Roadmap
+# Part 8: Azure Observability (Monitor & Log Analytics)
+
+[▲ Back to Table of Contents](#-table-of-contents)
+
+## The Concept of Centralized Logging
+
+- Traditional VM administration (viewing logs stored within `/var/log/app.log`) is an anti-pattern for cloud.
+  - If a VM runs out of disk space due to large unrotated log files, it can become unresponsive or crash.
+  - If VMs are auto-scaled, the instance will be terminated and replaced, potentially losing log data.
+- In cloud environments, logs should be centralized and ingested from all sources.
+
+### Logs vs. Metrics
+
+- **Logs** are detailed, event driven, structured data about events that occur within an application or system.
+  - User login failed
+  - Database connection error
+  - Stack traces
+- **Metrics** are numerical values that are sampled at regular intervals and represent the state of a system or application.
+  - CPU Usage
+  - Memory Usage
+  - Network Traffic
+  - Requests per Second
+
+### Azure Log Analytics Workspace (LAW)
+
+- A LAW is a centralized repository for logs and metrics from various sources.
+- It is a dedicated resource for storing application logs and metrics. The data is then used in Azure Monitor and other tools for monitoring and alerting.
+- It is responsible for ingesting, storing, and analyzing log data from various sources.
+
+#### Why Separate Logs and have a dedicated data store?
+
+- **Tamper Resistance**: Logs are stored in a dedicated data store that is not accessible to the application. When an attacker gains access to the application, they cannot tamper with or delete the logs.
+- **Resource Efficiency**: Running heavy queries (grep, awk) on long lines of raw log data can be resource-intensive for the VM. By utilizing a dedicated data store, heavy queries can be offloaded to a completely separate system.
+- **Centralized Logging**: Logs are collected from multiple VM instances and stored in a centralized location, making it easier to create join queries and analyze log data from multiple resources at once.
+- **Cost Efficiency**: Storing logs in a dedicated data store can be more cost-effective than running heavy queries on raw log data stored in the VM's own disk.
+
+## Ingesting Docker Logs
+
+- By default, Docker logs are stored in the VM's own disk (`/var/lib/docker/containers/<container_id>/<container_id>-json.log`).
+
+### Local -> Log Analytics Workspace
+
+- To import Docker logs into a Log Analytics Workspace, there are several options available:
+
+  - **Using `Azure Monitor Agent`**
+    - The host VM is responsible for collecting and sending the telemetry to the Log Analytics Workspace.
+    - Azure Monitor Agent runs as a background service within the `systemd` daemon.
+    - **Log Ingestion Flow:**
+
+      ```mermaid
+      flowchart LR
+          A["Container (stdout/stderr)"] --> B["Host Syslog (docker-compose.yml)"]
+          B --> D["Azure Monitor Agent (AMA)"]
+          DCR["Data Collection Rule (DCR)"] -.->|"Instructs & Filters"| D
+          D --> E["Log Analytics Workspace (LAW)"]
+      ```
+
+      1. Container will emit `stdout`/`stderr`
+      2. Container stack will be configured to send logs within the host's syslog through the `docker-compose.yml` file
+      3. Data Collection Rule (DCR) defines what to collect, in-flight transformations, and the target workspace
+      4. Azure Monitor Agent (AMA) reads syslog data, applies DCR filtering, and ships logs to the Log Analytics Workspace using the VM's Managed Identity
+
+  - **Using a dedicated log shipper**
+    - Bypass the native logging agents and use a dedicated log shipper (Vector, Fluent Bit) to call Azure's REST API to send logs to the Log Analytics Workspace.
+    - **Log Ingestion Flow:**
+
+      ```mermaid
+      flowchart LR
+          A["Container (stdout/stderr)"] --> B["Log Shipper (Vector / Fluent Bit)"]
+          B -->|Direct HTTP POST via Azure REST API| C["Log Analytics Workspace (LAW)"]
+      ```
+
+      1. Container will emit `stdout`/`stderr`
+      2. Container stack will be configured to send logs to the log shipper
+      3. Chosen log shipper will send logs to the Log Analytics Workspace by making direct HTTP POST request to Azure
+      4. Log shipper will authenticate by having its own Service Principal
+
+## Kusto Query Language (KQL)
+
+- Similar concept to SQL, but more focused on querying log data
+- Pipeline based language similar to Unix shell commands/Bash
+
+```kql
+Syslog
+| where TimeGenerated > ago(24h)
+| where SeverityLevel == "error"
+| project TimeGenerated, ProcessName, SyslogMessage
+| order by TimeGenerated desc
+| take 50
+```
+
+### Core KQL Operators
+
+- `where`: filters rows based on a condition:
+  - `==`: exact equality match
+  - `has`: fast whole-word/token match using the **Inverted Term Index** (O(1) index lookup)
+  - `contains`: slow arbitrary substring scan (case-insensitive **brute-force table scan**)
+- `project`: selects specific columns to include in the output
+- `extend`: creates new columns within the output based on existing ones
+- `summarize`: aggregates data based on a grouping key (similar to SQL GROUP BY, AVG, SUM)
+- `take / limit`: limits the number of rows returned
+
+### KQL Aggregations
+
+- `summarize`: aggregates data based on a grouping key (similar to SQL GROUP BY, AVG, SUM)
+  - `count`: counts the number of rows in the output
+  - `avg`: calculates the average of a numeric column
+  - `sum`: calculates the sum of a numeric column
+- `bin()`: bins (groups) data into time intervals (e.g. `bin(TimeGenerated, 1h)`)
+- `render timechart`: renders a time chart of the data (line graph) in the Azure portal
+
+```kql
+Syslog
+| where TimeGenerated > ago(6h)
+| where SyslogMessage has "error"
+| summarize ErrorCount = count() by bin(TimeGenerated, 15m), ProcessName
+| render timechart
+```
+
+## Application Insights
+- When an action is done within the backend microservice architecture, you would be able to see the general logs such as HTTP 200 OK, 404 Not Found, 500 Internal Server Error with accompanying time to execute the request.
+  - The problem: what caused the 12 second delay?
+  - Plain centralized logs can tell you what individual services saw, but they do not show the **chain of custody** across services.
+
+- Application Insights is Azure's Application Performance Monitoring (APM) service that provides telemetry data on your applications.
+- Its data is also stored within Log Analytics Workspaces (LAW), but in specialized schema tables:
+  - `AppRequests`: Inbound HTTP requests received by a service (duration, status code).
+  - `AppDependencies`: Outbound calls made by a service (calls to Postgres, Redis, or other HTTP microservices).
+  - `AppExceptions`: Unhandled exceptions and stack traces.
+  - `AppTraces`: Custom log messages emitted by your application logger.
+
+### Distributed Tracing & W3C Trace Context
+- Distributed tracing is the process of tracking a request as it moves through a distributed system.
+```trace
+User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL──> [PostgreSQL]
+```
+- Whenever a request is made within the system, a trace context is attached to the request.
+- The trace context is propagated across services using W3C Trace Context headers.
+  - 1. When a request is received, the API Gateway generates a unique random ID called the trace ID.
+  - 2. When the gateway makes a request to the next service, the trace ID is propagated to the downstream services via the `traceparent` header:
+    ```http
+    GET /billing/charge HTTP/1.1
+    Host: billing-service
+    traceparent: 00-abc123456789-span1-01
+    ```
+  - 3. When the next service receives the request, it extracts the `traceparent` header and uses it to create a new trace context (e.g. when calling the database, it tags the query with the trace ID so that the trace context is preserved across the call).
+
+### Trace Vocabulary
+- **Trace**: A single request that moves through a distributed system, identified by a unique trace ID.
+- **Span**: A single operation within a trace, such as a database query or an HTTP request.
+- **Trace Context**: The data associated with a trace, including the trace ID and span information.
+- **Application Map**: A visual representation of the distributed system, showing the relationships between services and their trace data. Azure can automatically create a visual diagram with arrows that shows your architecture and how may milliseconds each arrow took.
+
+### Trace Context Installation Approach
+- **SDK Approach**: Use `azure-monitor-opentelemetry` and initialize within your service code.
+  - Full control and fully customizable.
+  - Requires code changes and image redeployment.
+
+- **Auto-Instrumentation**: Use `opentelemetry-instrument` to automatically instrument your service code without any changes.
+  - Zero code changes in exchange for less control and customization.
+
+<div style="page-break-after: always;"></div>
+
+---
+
+# Part 9: Notes to Self & Career Roadmap
 
 [▲ Back to Table of Contents](#-table-of-contents)
 
@@ -610,11 +798,11 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
 - [x] CIDR Notation
 - [x] IP Subnetting
 - [x] OSI Layer
-  - [ ] Layer 4: TCP vs UDP
-  - [ ] Layer 7: HTTP, HTTPS, WebSockets
-- [ ] Network Address Translation
-- [ ] DNS
-- [ ] Routing
+  - [/] Layer 4: TCP vs UDP
+  - [/] Layer 7: HTTP, HTTPS, WebSockets
+- [/] Network Address Translation
+- [/] DNS
+- [/] Routing
 
 ## Cloud Concepts
 
@@ -633,14 +821,14 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
 - [ ] Load Balancers
 - [ ] Application Gateways
 - [ ] Managed Disks
-- [ ] Blob Storage
+- [x] Blob Storage
 - [ ] Managed Databases (SQL / PostgreSQL)
-- [ ] Identity & Access Management (IAM)
-- [ ] Role-Based Access Control (RBAC)
+- [x] Identity & Access Management (IAM)
+- [x] Role-Based Access Control (RBAC)
 - [x] Azure Entra ID
-- [ ] Azure Key Vault
-- [ ] Managed Identities
-- [ ] Log Analytics / Azure Monitor
+- [x] Azure Key Vault
+- [x] Managed Identities
+- [x] Log Analytics / Azure Monitor
 
 ## Linux Commands & Concepts
 
@@ -663,8 +851,8 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
 - [x] CI/CD Pipelines
 - [x] GitHub Actions Workflows (`.yml`)
 - [x] Containerization (Docker)
-- [ ] Container Orchestration
-- [ ] Observability (Logging and Monitoring)
+- [x] Container Orchestration
+- [x] Observability (Logging and Monitoring)
 - [/] Git Flow (rebase, cherry-pick)
 - [/] Reverse Proxies (Nginx, Caddy)
 - [ ] SSL/TLS Certificates
