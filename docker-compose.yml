@@ -1,3 +1,15 @@
+# ---------------------------------------------
+# Logging Configuration
+# ---------------------------------------------
+
+# 'x-' prefix indicates this is a reusable configuration.
+# Docker compose does not treat this section as a service, but rather as a reusable configuration.
+x-logging: &default-logging # '&' is a YAML anchor that allows referencing this configuration elsewhere.
+  driver: "syslog" # Tell Docker to use syslog as the logging driver/where containers should send their stdout and stderr logs.
+  options:
+    tag: "maas/{{.Name}}" # Sets a label for each log. {{.Name}} is a template variable that will be replaced with the container name where the log is associated.
+    syslog-facility: "daemon" # Indicate the logs that they are from a daemon process.
+
 services:
   # ---------------------------------------------
   # Edge Proxy (Entry Point for Clients)
@@ -10,6 +22,7 @@ services:
       - "443:443"
     depends_on:
       - api-gateway
+    logging: *default-logging # Use the default logging configuration defined above.
 
   # ---------------------------------------------
   # API Gateway (Internal Router)
@@ -35,10 +48,10 @@ services:
       - LEDGER_SERVICE_URL=http://ledger:8000
       - LEDGER_PUBLISH_TIMEOUT_SECONDS=0.5 # Timeout for publishing to the ledger in seconds
       # Billing service URL
-
       - BILLING_SERVICE_URL=http://billing:8000
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
+    logging: *default-logging
     depends_on: # Define services to depend on to ensure they start first
       - identity
       - math-add
@@ -63,6 +76,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy # Ensure the identity service waits for the PostgreSQL database to be healthy before starting
+    logging: *default-logging
 
   # Ports are commented out for the operation services because they are not intended to be accessed directly from outside the Docker network.
   # Uncomment the ports only for direct access in testing or development.
@@ -71,24 +85,28 @@ services:
     image: acrmaascluster.azurecr.io/math-add:latest # Image name for the math-add service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8011:8000"  # Expose port 8000 of the container to port 8011 on the host
+    logging: *default-logging
 
   math-subtract: # Name of the service
     build: ./services/math-subtract # Directory containing the Dockerfile for the math-subtract service
     image: acrmaascluster.azurecr.io/math-subtract:latest # Image name for the math-subtract service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8012:8000"  # Expose port 8000 of the container to port 8012 on the host
+    logging: *default-logging
 
   math-multiply: # Name of the service
     build: ./services/math-multiply # Directory containing the Dockerfile for the math-multiply service
     image: acrmaascluster.azurecr.io/math-multiply:latest # Image name for the math-multiply service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8013:8000"  # Expose port 8000 of the container to port 8013 on the host
+    logging: *default-logging
 
   math-divide: # Name of the service
     build: ./services/math-divide # Directory containing the Dockerfile for the math-divide service
     image: acrmaascluster.azurecr.io/math-divide:latest # Image name for the math-divide service that will be pulled from the Azure Container Registry
     # ports:
     #   - "8014:8000"  # Expose port 8000 of the container to port 8014 on the host
+    logging: *default-logging
 
   ledger:
     build: ./services/ledger # Directory containing the Dockerfile for the ledger service
@@ -99,6 +117,7 @@ services:
     #   - "8021:8000" # Expose port 8000 of the container to port 8021 on the host (optional, only needed for direct access to the ledger service)
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ledger_db
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy # Ensure the ledger service waits for the PostgreSQL database to be healthy before starting
@@ -116,6 +135,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
       # - XENDIT_PUBLIC_KEY=${XENDIT_PUBLIC_KEY}
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy # Ensure the billing service waits for the PostgreSQL database to be healthy before starting
@@ -141,6 +161,7 @@ services:
       timeout: 5s # If command returns no response within five seconds, count it as failed.
       retries: 5 # After 5 failed attempts, the service will be marked as unhealthy
       # start_period: 30s
+    logging: *default-logging
 
 volumes: # Define named volumes for persistent data storage
   ledger_data: # Name of the volume for PostgreSQL data
