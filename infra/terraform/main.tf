@@ -377,9 +377,9 @@ resource "azurerm_key_vault" "maas_kv" {
 # Define the role assignment for the home tenant to make CRUD operations on the key vault.
 # "azurerm_role_assignment" is the resource type used to assign a role to a principal (The home tenant in this case) at the resource level (Key Vault).
 resource "azurerm_role_assignment" "tf_kv_officer" {
-  role_definition_name = "Key Vault Secrets Officer"                      # Which role to assign (Allow CRUD operations on secrets) (What?)
-  scope                = azurerm_key_vault.maas_kv.id                     # What resource to assign the role to (the key vault in this case) (Where?)
-  principal_id         = data.azurerm_client_config.current.object_id     # Who to assign the role to (the home tenant in this case) (Who?)
+  role_definition_name = "Key Vault Secrets Officer"                  # Which role to assign (Allow CRUD operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                 # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = data.azurerm_client_config.current.object_id # Who to assign the role to (the home tenant in this case) (Who?)
 
 }
 
@@ -389,8 +389,8 @@ resource "azurerm_role_assignment" "tf_kv_officer" {
 
 # Define the secrets to be stored in the key vault.
 # Secrets are declared as variables under the "variables.tf" file.
-locals { # locals block is used to define local variables that can be used throughout the Terraform configuration.
-  app_secrets = { # app_secrets is a local variable that holds the secrets to be stored in the key vault.
+locals {                                     # locals block is used to define local variables that can be used throughout the Terraform configuration.
+  app_secrets = {                            # app_secrets is a local variable that holds the secrets to be stored in the key vault.
     "jwt-secret"            = var.jwt_secret # Referenced from the "variables.tf" file.
     "xendit-secret-key"     = var.xendit_secret_key
     "xendit-callback-token" = var.xendit_callback_token
@@ -401,21 +401,89 @@ locals { # locals block is used to define local variables that can be used throu
 
 # Create the secrets in the key vault.
 resource "azurerm_key_vault_secret" "app_secrets" {
-  for_each = local.app_secrets                  # Iterate over the app_secrets local variable and create a secret for each key-value pair.
-  name     = each.key                           # The name of the secret to be created in the key vault.
-  value    = each.value                         # The value of the secret to be stored in the key vault.
-  key_vault_id = azurerm_key_vault.maas_kv.id   # The ID of the key vault where the secret will be stored.
+  for_each     = local.app_secrets            # Iterate over the app_secrets local variable and create a secret for each key-value pair.
+  name         = each.key                     # The name of the secret to be created in the key vault.
+  value        = each.value                   # The value of the secret to be stored in the key vault.
+  key_vault_id = azurerm_key_vault.maas_kv.id # The ID of the key vault where the secret will be stored.
 
   # Ensures the role assignment is complete before creating the secret.
   # This makes sure that terraform has write permissions before attempting to add the secret to the key vault.
-  depends_on = [ azurerm_role_assignment.tf_kv_officer ]
+  depends_on = [azurerm_role_assignment.tf_kv_officer]
 }
 
 # Define the role assignment for the virtual machine to read secrets from the key vault.
 resource "azurerm_role_assignment" "vm_kv_reader" {
-  role_definition_name = "Key Vault Secrets User"                                         # Which role to assign (Allow read operations on secrets) (What?)
-  scope                = azurerm_key_vault.maas_kv.id                                     # What resource to assign the role to (the key vault in this case) (Where?)
-  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id   # Who to assign the role to (the virtual machine in this case) (Who?)
+  role_definition_name = "Key Vault Secrets User"                                       # Which role to assign (Allow read operations on secrets) (What?)
+  scope                = azurerm_key_vault.maas_kv.id                                   # What resource to assign the role to (the key vault in this case) (Where?)
+  principal_id         = azurerm_linux_virtual_machine.maas_vm.identity[0].principal_id # Who to assign the role to (the virtual machine in this case) (Who?)
+}
+
+# -----------------------------------------
+# Azure Observability (Log Analytics, Azure Monitor, DCR)
+# -----------------------------------------
+
+# Define the Log Analytics Workspace (LAW) for the virtual machine.
+# "azurerm_log_analytics_workspace" is a resource type that allows you to create a Log Analytics workspace in Azure.
+resource "azurerm_log_analytics_workspace" "maas_law" {
+  name                = "law-maas-cluster"                      # The name of the Log Analytics workspace to be created.
+  location            = azurerm_resource_group.maas_rg.location # The Azure region where the Log Analytics workspace will be created.
+  resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group to which the Log Analytics workspace will be assigned.
+  sku                 = "PerGB2018"                             # The SKU (pricing tier) of the Log Analytics workspace.
+  retention_in_days   = 30                                      # The number of days to retain logs in the Log Analytics workspace.
+}
+
+# Define the Azure Monitor Agent (AMA) extension for the virtual machine.
+# "azurerm_virtual_machine_extension" is a resource type that allows you to install an extension on a virtual machine in Azure.
+resource "azurerm_virtual_machine_extension" "ama" {
+  name                       = "AzureMonitorLinuxAgent"                 # The name of the extension to be installed.
+  virtual_machine_id         = azurerm_linux_virtual_machine.maas_vm.id # The ID of the virtual machine to install the extension on.
+  publisher                  = "Microsoft.Azure.Monitor"                # The publisher of the extension.
+  type                       = "AzureMonitorLinuxAgent"                 # The type of the extension.
+  type_handler_version       = "1.28"                                    # The version of the extension handler to use.
+  auto_upgrade_minor_version = true                                     # Automatically upgrade to the latest minor version of the extension.
+
+  depends_on = [azurerm_linux_virtual_machine.maas_vm] # The virtual machine must be created before the extension can be installed.
+}
+
+# Define the Data Collection Rule (DCR) for the virtual machine.
+# "azurerm_data_collection_rule" is a resource type that allows you to create a Data Collection Rule in Azure.
+resource "azurerm_monitor_data_collection_rule" "maas_dcr" {
+  name                = "dcr-maas-cluster"                      # The name of the Data Collection Rule to be created.
+  resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group where the Data Collection Rule will be created.
+  location            = azurerm_resource_group.maas_rg.location # The location where the Data Collection Rule will be created, referencing the resource group defined above.
+
+  destinations {
+    log_analytics {
+      workspace_resource_id = azurerm_log_analytics_workspace.maas_law.id # The ID of the Log Analytics workspace where the data will be sent.
+      name                  = "law-destination"                           # The name of the destination within the Data Collection Rule.
+    }
+  }
+
+  data_sources {
+    syslog {
+      facility_names = ["daemon", "syslog", "local0"] # Capture syslog messages from system daemons, syslog system, and local0, which is used for custom app logging.
+      log_levels     = ["*"]                          # Set the log level to capture all syslog messages.
+      name           = "syslog-datasource"            # The name of the syslog data source.
+      streams        = ["Microsoft-Syslog"]           # Standardized schema for formatting syslog messages. Allows stream of logs to flow directly into the Microsoft Syslog schema stream.
+    }
+  }
+
+  data_flow {
+    streams      = ["Microsoft-Syslog"] # The stream to use for the data flow. Any data flowing into the specific stream will be collected and sent to the destinations.
+    destinations = ["law-destination"]  # The destination to send the collected data to. In this case, it is the LAW (Log Analytics Workspace) destination.
+  }
+}
+
+# DCR Rule association
+# Associate the DCR Rule with the VM
+resource "azurerm_monitor_data_collection_rule_association" "maas_dcr_association" {
+  name                    = "dcr-maas-vm"                                    # The name of the association.
+  target_resource_id      = azurerm_linux_virtual_machine.maas_vm.id         # The ID of the target resource to associate with the DCR Rule.
+  data_collection_rule_id = azurerm_monitor_data_collection_rule.maas_dcr.id # The ID of the Data Collection Rule to associate with the target resource.
+}
+
+output "law_workspace_id" {
+  value = azurerm_log_analytics_workspace.maas_law.workspace_id # Output the ID of the Log Analytics workspace, which can be used to access the data collected by the DCR Rule.
 }
 
 # Once the virtual machine is created, we can output the public IP address of the VM so that we can access it remotely.
