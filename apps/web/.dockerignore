@@ -1,0 +1,28 @@
+# Version Control
+.git
+.gitignore
+
+# Dependencies
+node_modules
+.pnpm-store
+
+# Next.js Build Outputs & Local Cache
+.next
+out
+.turbo
+
+# Local Environment Variables & Secrets
+.env*.local
+.env
+
+# Testing & Artifacts
+*.test.ts
+*.test.tsx
+tests
+coverage
+
+# IDEs & System files
+.vscode
+.idea
+.DS_Store
+Thumbs.db
