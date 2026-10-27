@@ -833,18 +833,18 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 ## Linux Commands & Concepts
 
 - [x] Package Management (APT)
-- [ ] GPG Keys & Keyrings
-- [ ] Sources List (`/etc/apt/sources.list.d/`)
+- [x] GPG Keys & Keyrings
+- [x] Sources List (`/etc/apt/sources.list.d/`)
 - [x] File Permissions (`chmod`)
 - [x] Permission Bits (`0755`, `a+r`)
 - [x] File Ownership (`chown`)
 - [x] User & Group Management (`usermod`)
 - [x] Shell Redirection (`|`, `>`, `>>`)
 - [x] Environment Variables
-- [ ] curl
-- [ ] tee
-- [ ] dpkg
-- [ ] lsb_release
+- [x] curl
+- [x] tee
+- [x] dpkg
+- [x] lsb_release
 
 ## Additional DevOps & Backend Concepts
 
@@ -854,9 +854,9 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [x] Container Orchestration
 - [x] Observability (Logging and Monitoring)
 - [/] Git Flow (rebase, cherry-pick)
-- [/] Reverse Proxies (Nginx, Caddy)
-- [ ] SSL/TLS Certificates
-- [ ] Microservices Architecture
+- [x] Reverse Proxies (Nginx, Caddy)
+- [x] SSL/TLS Certificates
+- [x] Microservices Architecture
 - [x] API Gateways
 - [x] Secret Management
 

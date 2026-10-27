@@ -1,0 +1,44 @@
+# Version Control
+.git
+.gitignore
+
+# Dependencies
+node_modules
+**/node_modules
+.pnpm-store
+
+# Next.js & Build Outputs
+.next
+**/.next
+out
+.turbo
+**/.turbo
+dist
+build
+
+# Python
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.venv
+venv
+env
+
+# Local Environment & Secrets
+.env
+.env*.local
+*.env
+terraform.tfstate
+
+# Testing & Artifacts
+coverage
+.coverage
+*.test.ts
+*.test.tsx
+
+# IDEs & System files
+.vscode
+.idea
+.DS_Store
+Thumbs.db

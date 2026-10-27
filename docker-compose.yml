@@ -22,11 +22,27 @@ services:
       - "443:443"
     depends_on:
       - api-gateway
+      - web
     logging: *default-logging # Use the default logging configuration defined above.
 
   # ---------------------------------------------
-  # API Gateway (Internal Router)
+  # Frontend Application (Next.js)
   # ---------------------------------------------
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: acrmaascluster.azurecr.io/web:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    # ports:
+    #   - "3000:3000"
+    depends_on:
+      - api-gateway
+    logging: *default-logging
 
   api-gateway: # Name of the service
     build: ./services/api-gateway # Directory containing the Dockerfile for the API Gateway service
