@@ -206,7 +206,7 @@ resource "azurerm_linux_virtual_machine" "maas_vm" {
   name                = "vm-maas-cluster"                       # The name of the virtual machine to be created in Azure.
   resource_group_name = azurerm_resource_group.maas_rg.name     # The name of the resource group where the virtual machine will be created, referencing the resource group defined above.
   location            = azurerm_resource_group.maas_rg.location # The location where the virtual machine will be created, referencing the resource group defined above.
-  size                = "Standard_B2ats_v2"                     # The size of the virtual machine, which determines the number of CPU cores, amount of RAM, and other resources allocated to the VM. "Standard_B1s" is a basic size suitable for small workloads and testing purposes.
+  size                = "Standard_B2als_v2"                     # The size of the virtual machine, which determines the number of CPU cores, amount of RAM, and other resources allocated to the VM. "Standard_B1s" is a basic size suitable for small workloads and testing purposes.
   admin_username      = "azureuser"                             # The username for the administrator account on the virtual machine. This is the account that will be used to log in to the VM and perform administrative tasks. In production, it's recommended to use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables, instead of hardcoding them in the code.
   # admin_password      = "P@ssw0rd1234!"                         # In production, use a more secure method for managing credentials, such as Azure Key Vault or Terraform variables.
 

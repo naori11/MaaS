@@ -798,11 +798,11 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [x] CIDR Notation
 - [x] IP Subnetting
 - [x] OSI Layer
-  - [/] Layer 4: TCP vs UDP
-  - [/] Layer 7: HTTP, HTTPS, WebSockets
+  - [x] Layer 4: TCP vs UDP
+  - [x] Layer 7: HTTP, HTTPS, WebSockets
 - [/] Network Address Translation
-- [/] DNS
-- [/] Routing
+- [x] DNS
+- [x] Routing
 
 ## Cloud Concepts
 
@@ -813,11 +813,11 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [ ] App Services (PaaS)
 - [x] Container Registries (ACR)
 - [ ] Kubernetes Services (AKS)
-- [ ] Virtual Networks (VNet)
-- [ ] Subnets
-- [ ] Network Security Groups (NSG)
-- [ ] Network Interfaces (NIC)
-- [ ] Public IPs
+- [x] Virtual Networks (VNet)
+- [x] Subnets
+- [x] Network Security Groups (NSG)
+- [x] Network Interfaces (NIC)
+- [x] Public IPs
 - [ ] Load Balancers
 - [ ] Application Gateways
 - [ ] Managed Disks
@@ -839,7 +839,7 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [x] Permission Bits (`0755`, `a+r`)
 - [x] File Ownership (`chown`)
 - [x] User & Group Management (`usermod`)
-- [ ] Shell Redirection (`|`, `>`, `>>`)
+- [x] Shell Redirection (`|`, `>`, `>>`)
 - [x] Environment Variables
 - [ ] curl
 - [ ] tee
@@ -858,7 +858,7 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [ ] SSL/TLS Certificates
 - [ ] Microservices Architecture
 - [x] API Gateways
-- [ ] Secret Management
+- [x] Secret Management
 
 ## Career Advice & Transition Suggestions
 
