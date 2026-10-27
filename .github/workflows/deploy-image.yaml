@@ -40,6 +40,7 @@ jobs:
           - ledger
           - billing
           - nginx
+          - web
 
     steps:
       - name: Checkout Code # Name of the step that will be displayed in the GitHub Actions UI.
@@ -91,18 +92,24 @@ jobs:
 
       - name: Build and Push ${{ matrix.service }} Service # Name of the step that will be displayed in the GitHub Actions UI, dynamically showing the service being built and pushed.
         run: |
+          # If the service is 'web', use the web Dockerfile; otherwise, use the service's Dockerfile.
+          if [ "${{ matrix.service }}" = "web" ]; then
+            BUILD_PATH="-f apps/web/Dockerfile ."
+          else
+            BUILD_PATH="./services/${{ matrix.service }}"
+          fi
+
           # Build the Docker image for the current service in the matrix and tag it with the ACR login server and image name.
           # The image is tagged with the GitHub SHA (commit hash) to ensure that each image is uniquely identifiable based on the commit that triggered the workflow.
-          docker build ./services/${{ matrix.service }} -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
+          docker build $BUILD_PATH -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
 
           # Push the Docker image to Azure Container Registry with the commit hash as the tag for versioning and traceability.
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }}
 
           # For versioning purposes, also tag the image as 'latest' and push it to Azure Container Registry.
           # This allows users to pull the latest version of the image without specifying a tag.
-          docker build ./services/${{ matrix.service }} -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
-
-          # Push the 'latest' tagged image to Azure Container Registry.
+          # Tag the image as 'latest' and push it to Azure Container Registry.
+          docker tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
 
   deploy-to-vm:
