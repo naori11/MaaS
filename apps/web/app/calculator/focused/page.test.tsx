@@ -77,7 +77,7 @@ describe("Calculator focused page", () => {
   it.each([
     {
       sequence: ["8", "+", "2", "="],
-      endpoint: "http://localhost:4000/api/v1/calculate/add",
+      endpoint: "/api/v1/calculate/add",
       result: 10,
       operation: "addition" as const,
       operandA: 8,
@@ -85,7 +85,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["9", "−", "4", "="],
-      endpoint: "http://localhost:4000/api/v1/calculate/subtract",
+      endpoint: "/api/v1/calculate/subtract",
       result: 5,
       operation: "subtraction" as const,
       operandA: 9,
@@ -93,7 +93,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["7", "×", "3", "="],
-      endpoint: "http://localhost:4000/api/v1/calculate/multiply",
+      endpoint: "/api/v1/calculate/multiply",
       result: 21,
       operation: "multiplication" as const,
       operandA: 7,
@@ -101,7 +101,7 @@ describe("Calculator focused page", () => {
     },
     {
       sequence: ["8", "÷", "2", "="],
-      endpoint: "http://localhost:4000/api/v1/calculate/divide",
+      endpoint: "/api/v1/calculate/divide",
       result: 4,
       operation: "division" as const,
       operandA: 8,
