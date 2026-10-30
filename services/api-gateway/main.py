@@ -117,7 +117,7 @@ def _enforce_rate_limit(request: Request) -> None:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
 
-def _enforce_valid_jwt(request: Request) -> None:
+def _enforce_valid_jwt(request: Request) -> str:
     authorization = request.headers.get("Authorization", "")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
@@ -130,9 +130,15 @@ def _enforce_valid_jwt(request: Request) -> None:
         raise HTTPException(status_code=500, detail="JWT secret not configured")
 
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="Invalid credentials") from exc
+
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    return user_id
 
 
 def _extract_upstream_error_message(response: httpx.Response) -> str:
@@ -232,8 +238,9 @@ async def unhandled_exception_handler(request: Request, _):
 async def _proxy_post(request: Request, upstream_url: str, background_tasks: BackgroundTasks | None = None) -> JSONResponse:
     _enforce_rate_limit(request)
 
+    user_id = None
     if _requires_jwt(request.method, request.url.path):
-        _enforce_valid_jwt(request)
+        user_id = _enforce_valid_jwt(request)
 
     content_type = request.headers.get("Content-Type", "")
     if not content_type.lower().startswith("application/json"):
@@ -249,6 +256,8 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
         "Content-Type": "application/json",
         "X-Request-ID": request_id,
     }
+    if user_id is not None:
+        upstream_headers["X-User-Id"] = user_id
 
     authorization = request.headers.get("Authorization")
     if authorization:
@@ -309,13 +318,16 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
 async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
     _enforce_rate_limit(request)
 
+    user_id = None
     if _requires_jwt(request.method, request.url.path):
-        _enforce_valid_jwt(request)
+        user_id = _enforce_valid_jwt(request)
 
     request_id = _request_id(request)
     upstream_headers = {
         "X-Request-ID": request_id,
     }
+    if user_id is not None:
+        upstream_headers["X-User-Id"] = user_id
 
     authorization = request.headers.get("Authorization")
     if authorization:
