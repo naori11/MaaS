@@ -1,7 +1,8 @@
+import { getAuthTokenFromBrowserSession } from "../auth/session";
+import { handleUnauthorized } from "./client";
+
 const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
 const LEDGER_TRANSACTIONS_PATH = "/api/v1/ledger/transactions";
-const AUTH_TOKEN_COOKIE = "maas_auth_token";
-const AUTH_TOKEN_TYPE_COOKIE = "maas_auth_token_type";
 
 export type LedgerTransaction = {
   request_id: string;
@@ -17,39 +18,10 @@ export type LedgerTransactionsResponse = {
   items: LedgerTransaction[];
 };
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  const entry = document.cookie
-    .split(";")
-    .map((cookie) => cookie.trim())
-    .find((cookie) => cookie.startsWith(`${name}=`));
-
-  if (!entry) {
-    return null;
-  }
-
-  return decodeURIComponent(entry.slice(name.length + 1));
-}
-
-function getAuthorizationHeaderValue(): string | null {
-  const token = readCookie(AUTH_TOKEN_COOKIE);
-
-  if (!token) {
-    return null;
-  }
-
-  const tokenType = readCookie(AUTH_TOKEN_TYPE_COOKIE) ?? "bearer";
-  const normalizedType = tokenType.toLowerCase() === "bearer" ? "Bearer" : tokenType;
-
-  return `${normalizedType} ${token}`;
-}
-
 export async function fetchLedgerTransactions(limit: number) {
   const params = new URLSearchParams({ limit: String(limit) });
-  const authorization = getAuthorizationHeaderValue();
+  const token = getAuthTokenFromBrowserSession();
+  const authorization = token ? `Bearer ${token}` : null;
   const headers = authorization ? { Authorization: authorization } : undefined;
 
   const response = await fetch(`${GATEWAY_BASE_URL}${LEDGER_TRANSACTIONS_PATH}?${params.toString()}`, {
@@ -57,6 +29,8 @@ export async function fetchLedgerTransactions(limit: number) {
     credentials: "include",
     headers,
   });
+
+  handleUnauthorized(response, Boolean(token));
 
   if (!response.ok) {
     throw new Error("Failed to load ledger transactions");

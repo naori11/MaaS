@@ -21,8 +21,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("../_lib/mock-auth", async () => {
-  const actual = await vi.importActual<typeof import("../_lib/mock-auth")>("../_lib/mock-auth");
+vi.mock("../_lib/auth/session", async () => {
+  const actual = await vi.importActual<typeof import("../_lib/auth/session")>("../_lib/auth/session");
 
   return {
     ...actual,

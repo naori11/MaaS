@@ -1,4 +1,5 @@
 import { toApiClientError } from "./errors";
+import { clearAuthSession } from "../auth/session";
 
 const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
 
@@ -43,6 +44,8 @@ export async function requestJson<TResponse>(path: string, options: RequestOptio
     signal,
   });
 
+  handleUnauthorized(response, Boolean(token));
+
   const payload = await parseJsonBody(response);
 
   if (!response.ok) {
@@ -50,4 +53,19 @@ export async function requestJson<TResponse>(path: string, options: RequestOptio
   }
 
   return payload as TResponse;
+}
+
+export function handleUnauthorized(response: Response, hasAccessToken: boolean) {
+  if (response.status !== 401 || !hasAccessToken || typeof window === "undefined") {
+    return;
+  }
+
+  clearAuthSession();
+
+  if (window.location.pathname === "/login" || window.location.pathname === "/signup") {
+    return;
+  }
+
+  const currentPath = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/login?next=${encodeURIComponent(currentPath)}`);
 }

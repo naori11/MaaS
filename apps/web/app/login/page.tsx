@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect, setAuthSession } from "../_lib/mock-auth";
+import { resolvePostAuthRedirect, setAuthSession } from "../_lib/auth/session";
 
 function LoginPageContent() {
   const [email, setEmail] = useState("");

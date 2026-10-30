@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_EXPIRES_AT_COOKIE, AUTH_TOKEN_COOKIE } from "./_lib/mock-auth";
+import { AUTH_EXPIRES_AT_COOKIE, AUTH_TOKEN_COOKIE } from "./_lib/auth/cookies";
 
 const redirect = vi.fn();
 const cookies = vi.fn();

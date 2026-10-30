@@ -1,4 +1,9 @@
-import { clearAuthCookies, readAuthTokenFromBrowserCookies, writeAuthCookies } from "./cookies";
+import {
+  clearAuthCookies,
+  readAuthTokenFromBrowserCookies,
+  readAuthTokenTypeFromBrowserCookies,
+  writeAuthCookies,
+} from "./cookies";
 
 export type AuthSession = {
   accessToken: string;
@@ -41,4 +46,17 @@ export function clearAuthSession() {
 
 export function getAuthTokenFromBrowserSession(): string | null {
   return readAuthTokenFromBrowserCookies();
+}
+
+export function getAuthTokenTypeFromBrowserSession(): string {
+  const tokenType = readAuthTokenTypeFromBrowserCookies() ?? "bearer";
+  return tokenType.toLowerCase() === "bearer" ? "Bearer" : tokenType;
+}
+
+export function resolvePostAuthRedirect(nextPath: string | null | undefined): string {
+  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//") || nextPath.includes("://")) {
+    return "/calculator/focused";
+  }
+
+  return nextPath;
 }

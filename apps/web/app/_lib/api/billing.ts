@@ -1,8 +1,8 @@
 import type { BackendBillingPlanName, BackendSubscribablePlanName } from "../billing/plan-mapper";
+import { getAuthTokenFromBrowserSession } from "../auth/session";
+import { handleUnauthorized } from "./client";
 
 const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
-const AUTH_TOKEN_COOKIE = "maas_auth_token";
-const AUTH_TOKEN_TYPE_COOKIE = "maas_auth_token_type";
 
 export type BillingStatus = {
   plan_name: BackendBillingPlanName;
@@ -14,34 +14,14 @@ export type SubscribeResponse = {
   components_sdk_key: string;
 };
 
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  const entry = document.cookie
-    .split(";")
-    .map((cookie) => cookie.trim())
-    .find((cookie) => cookie.startsWith(`${name}=`));
-
-  if (!entry) {
-    return null;
-  }
-
-  return decodeURIComponent(entry.slice(name.length + 1));
-}
-
 function getAuthorizationHeaderValue(): string | null {
-  const token = readCookie(AUTH_TOKEN_COOKIE);
+  const token = getAuthTokenFromBrowserSession();
 
   if (!token) {
     return null;
   }
 
-  const tokenType = readCookie(AUTH_TOKEN_TYPE_COOKIE) ?? "bearer";
-  const normalizedType = tokenType.toLowerCase() === "bearer" ? "Bearer" : tokenType;
-
-  return `${normalizedType} ${token}`;
+  return `Bearer ${token}`;
 }
 
 async function billingRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -58,6 +38,8 @@ async function billingRequest<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+
+  handleUnauthorized(response, Boolean(authorization));
 
   if (!response.ok) {
     let message = "Billing request failed.";
