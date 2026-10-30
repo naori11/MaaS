@@ -1,6 +1,6 @@
 import type { BackendBillingPlanName, BackendSubscribablePlanName } from "../billing/plan-mapper";
 
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
 const AUTH_TOKEN_COOKIE = "maas_auth_token";
 const AUTH_TOKEN_TYPE_COOKIE = "maas_auth_token_type";
 

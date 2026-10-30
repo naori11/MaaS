@@ -39,7 +39,7 @@
   - [Kusto Query Language (KQL)](#kusto-query-language-kql)
   - [Application Insights](#application-insights)
 - [Part 9: Notes to Self & Career Roadmap](#part-9-notes-to-self--career-roadmap)
-  - [Refresh on Networking Concepts](#refresh-on-networking-concepts--bro-you-know-all-of-these-from-3rd-year)
+  - [Refresh on Networking Concepts](#refresh-on-networking-concepts-bro-you-know-all-of-these-from-3rd-year)
   - [Cloud Concepts](#cloud-concepts)
   - [Linux Commands & Concepts](#linux-commands--concepts)
   - [Additional DevOps & Backend Concepts](#additional-devops--backend-concepts)
@@ -83,13 +83,15 @@
 
 ### Testing Dockerfiles (Building and Running docker images)
 
-- `docker build -t 'image_name':'tag' .` | command for building the image based on dockerfile. Must run within the directory of the app.
-- `docker run -p 'host_port':'container_port' 'image_name'` | command for running the image. Add `-d` before image name to detach terminal.
-- `docker ps` / `docker ps -a` | command to list running/dead or exited containers
-- `docker stop 'container_id'` | shuts down a running container
-- `docker rm 'container_id'` | removes the container build
-- `docker system prune` | removes every image/build that are unused
-- `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | opens a live terminal within the container
+| Command | Purpose |
+| :--- | :--- |
+| `docker build -t 'image_name':'tag' .` | Build the image based on dockerfile. Must run within the directory of the app. |
+| `docker run -p 'host_port':'container_port' 'image_name'` | Run the image. Add `-d` before image name to detach terminal. |
+| `docker ps` / `docker ps -a` | List running/dead or exited containers |
+| `docker stop 'container_id'` | Shuts down a running container |
+| `docker rm 'container_id'` | Removes the container build |
+| `docker system prune` | Removes every image/build that are unused |
+| `docker exec -it 'container_id' /bin/sh` or `/bin/bash` | Opens a live terminal within the container |
 
 ## Docker Compose
 
@@ -142,11 +144,14 @@
 ## Terraform (IaC - Infrastructure as Code)
 
 - Made after creating the initial services cluster (the API.)
-- `terraform init` | command for preparing terraform directory (`.terraform`). Donwloads necessary provider plugins (defined under `terraform/required_providers` block)
-- `terraform plan` | command that shows terraform execution plan to the actual infrastructure platform
-- `terraform apply` | applies the IaC by spinning up the resources defined within the code along with its configurations
-- `terraform destroy` | removes everything that is defined within the terraform configuration
-- `terraform fmt` | formats your code to make it more clean
+
+| Command | Purpose |
+| :--- | :--- |
+| `terraform init` | Prepare terraform directory (`.terraform`). Downloads necessary provider plugins (defined under `terraform/required_providers` block) |
+| `terraform plan` | Shows terraform execution plan to the actual infrastructure platform |
+| `terraform apply` | Applies the IaC by spinning up the resources defined within the code along with its configurations |
+| `terraform destroy` | Removes everything that is defined within the terraform configuration |
+| `terraform fmt` | Formats your code to make it more clean |
 
 ## Terraform State Management
 
@@ -155,26 +160,31 @@
 
 ### Scenarios & Questions
 
+> [!NOTE]
 > **Scenario 1:** If you manually delete a Virtual Network in the Azure Portal, but don't touch your Terraform code or state file, what happens the next time you run `terraform plan`? Why?
 >
 > - Terraform will perform a background refresh by checking the `.tfstate` file for the existing resources, then calls Azure API for each resource to verify its existence.
 > - Then terraform will detect that the resource no longer exists.
 > - If the resource is still within the `.tf` file, the next time that `terraform apply` is run, it will attempt to create the resource again.
 
+> [!NOTE]
 > **Scenario 2:** If you delete your local `terraform.tfstate` file, but the Azure resources still exist, what happens the next time you run `terraform apply`?
 >
 > - Terraform will not have any state to compare against, so it will treat the resources as not existing and attempt to create them again.
 > - But since all of the resources still exist in Azure, and there is no lookup table to compare with, Azure would return rejected requests.
 > - It does not recreate the state file, so the next time you run `terraform apply`, it will still treat the resources as not existing. The only way to fix this is to either delete the resources from Azure or recreate the state file by importing them into Terraform using `terraform import`.
 
+> [!WARNING]
 > **If Developer A and Developer B both run `terraform apply` from their own laptops at the exact same time using local state, what is the risk to the Azure environment?**
 >
 > - Multiple API calls to create resources will be sent and could cause conflicts, duplicate resources, and broken tfstate files for both ends.
 
+> [!IMPORTANT]
 > **Why can’t you just commit `terraform.tfstate` to Git to solve the collaboration problem? (Hint: There are two major reasons—one relates to merging, the other to security).**
 >
 > - Merge conflicts, and tfstate files contains secrets such as ssh keys, admin passwords, API tokens, etc. On which, everything is stored as plaintext, and Azure Blob storage is the one encrypthing it.
 
+> [!TIP]
 > **How does Terraform provision the resource needed for the remote state file if it does not exist yet?**
 >
 > - You provision it manually using the Azure portal or CLI.
@@ -182,11 +192,13 @@
 
 ## Key CLI commands
 
-- `terraform state list`: Lists all resources in the state file.
-- `terraform state show <resource>`: Shows the details of a specific resource in the state file.
-- `terraform import <resource> <id>`: Imports an existing resource from Azure into the state file in cases of people adding resources manually.
-- `terraform state rm <resource>`: Removes a resource from the state file without deleting it from Azure.
-- `terraform state mv <old_resource> <new_resource>`: Renames a resource in the state file.
+| Command | Purpose |
+| :--- | :--- |
+| `terraform state list` | Lists all resources in the state file. |
+| `terraform state show <resource>` | Shows the details of a specific resource in the state file. |
+| `terraform import <resource> <id>` | Imports an existing resource from Azure into the state file in cases of people adding resources manually. |
+| `terraform state rm <resource>` | Removes a resource from the state file without deleting it from Azure. |
+| `terraform state mv <old_resource> <new_resource>` | Renames a resource in the state file. |
 
 <div style="page-break-after: always;"></div>
 
@@ -263,11 +275,11 @@
 
 ### Scope Hierarchy
 
-```text
-Management Group
- └── Subscription
-      └── Resource Group
-           └── Individual Resource
+```mermaid
+flowchart TD
+    A["Management Group"] --> B["Subscription"]
+    B --> C["Resource Group"]
+    C --> D["Individual Resource"]
 ```
 
 - Management Group: Managing access, policies, and compliance for multiple subscriptions.
@@ -401,7 +413,7 @@ Management Group
 
 ## API Gateways
 
--
+> *Notes in progress / Section pending*
 
 ## Reverse Proxy (Ingress Layer)
 
@@ -432,7 +444,7 @@ Management Group
 
 ## Microservices Architecture
 
--
+> *Notes in progress / Section pending*
 
 ## SSL/TLS Certificates
 
@@ -440,6 +452,7 @@ Management Group
 
 When testing `https://localhost` in the browser, you will see a red lock or warning:
 
+> [!WARNING]
 > **"Not secure - Your connection to this site is not secure"** (`NET::ERR_CERT_AUTHORITY_INVALID`)
 
 This is completely normal and expected when using **self-signed certificates**.
@@ -586,18 +599,22 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
 
 ### Commands for Running and Diagnosing Services
 
-- `sudo systemctl start <service>` # Start the service right now in the current session.
-- `sudo systemctl enable <service>` # Enable the service to start automatically on boot.
-- `sudo systemctl restart <service>` # Restart the service.
-- `sudo systemctl stop <service>` # Stop the service.
-- `sudo systemctl status <service>` # Check the status of the service.
-- `sudo journalctl -u <service> -f` # View the live logs for the service.
+```bash
+sudo systemctl start <service>    # Start the service right now in the current session.
+sudo systemctl enable <service>   # Enable the service to start automatically on boot.
+sudo systemctl restart <service>  # Restart the service.
+sudo systemctl stop <service>     # Stop the service.
+sudo systemctl status <service>   # Check the status of the service.
+sudo journalctl -u <service> -f   # View the live logs for the service.
+```
 
 ---
 
 ## Continuous Deployment (CD) Pipelines to VM
 
 ### GitHub Actions to VM Deployment Overview
+
+> *Deployment strategies for shipping containerized workloads from GitHub Actions to an Azure Virtual Machine.*
 
 ### Strategy A: SSH/SCP Push Deployment (Appleboy Action & Port 22)
 
@@ -673,13 +690,13 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
     - Azure Monitor Agent runs as a background service within the `systemd` daemon.
     - **Log Ingestion Flow:**
 
-      ```mermaid
-      flowchart LR
-          A["Container (stdout/stderr)"] --> B["Host Syslog (docker-compose.yml)"]
-          B --> D["Azure Monitor Agent (AMA)"]
-          DCR["Data Collection Rule (DCR)"] -.->|"Instructs & Filters"| D
-          D --> E["Log Analytics Workspace (LAW)"]
-      ```
+```mermaid
+flowchart TD
+    A["Container (stdout/stderr)"] --> B["Host Syslog (docker-compose.yml)"]
+    B --> D["Azure Monitor Agent (AMA)"]
+    DCR["Data Collection Rule (DCR)"] -.->|"Instructs & Filters"| D
+    D --> E["Log Analytics Workspace (LAW)"]
+```
 
       1. Container will emit `stdout`/`stderr`
       2. Container stack will be configured to send logs within the host's syslog through the `docker-compose.yml` file
@@ -690,11 +707,11 @@ WantedBy=multi-user.target # The service will be started once the dedicated runl
     - Bypass the native logging agents and use a dedicated log shipper (Vector, Fluent Bit) to call Azure's REST API to send logs to the Log Analytics Workspace.
     - **Log Ingestion Flow:**
 
-      ```mermaid
-      flowchart LR
-          A["Container (stdout/stderr)"] --> B["Log Shipper (Vector / Fluent Bit)"]
-          B -->|Direct HTTP POST via Azure REST API| C["Log Analytics Workspace (LAW)"]
-      ```
+```mermaid
+flowchart TD
+    A["Container (stdout/stderr)"] --> B["Log Shipper (Vector / Fluent Bit)"]
+    B -->|Direct HTTP POST via Azure REST API| C["Log Analytics Workspace (LAW)"]
+```
 
       1. Container will emit `stdout`/`stderr`
       2. Container stack will be configured to send logs to the log shipper
@@ -757,8 +774,11 @@ Syslog
 
 ### Distributed Tracing & W3C Trace Context
 - Distributed tracing is the process of tracking a request as it moves through a distributed system.
-```trace
-User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL──> [PostgreSQL]
+```mermaid
+flowchart LR
+    A["User Click"] --> B["API Gateway"]
+    B -->|HTTP| C["Billing Service"]
+    C -->|SQL| D["PostgreSQL"]
 ```
 - Whenever a request is made within the system, a trace context is attached to the request.
 - The trace context is propagated across services using W3C Trace Context headers.
@@ -793,14 +813,14 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 
 [▲ Back to Table of Contents](#-table-of-contents)
 
-## Refresh on Networking Concepts ( bro you know all of these from 3rd year)
+## Refresh on Networking Concepts (bro you know all of these from 3rd year)
 
 - [x] CIDR Notation
 - [x] IP Subnetting
 - [x] OSI Layer
   - [x] Layer 4: TCP vs UDP
   - [x] Layer 7: HTTP, HTTPS, WebSockets
-- [/] Network Address Translation
+- [ ] Network Address Translation *(In Progress)*
 - [x] DNS
 - [x] Routing
 
@@ -853,12 +873,20 @@ User Click ──> [API Gateway] ──HTTP──> [Billing Service] ──SQL�
 - [x] Containerization (Docker)
 - [x] Container Orchestration
 - [x] Observability (Logging and Monitoring)
-- [/] Git Flow (rebase, cherry-pick)
+- [ ] Git Flow (rebase, cherry-pick) *(In Progress)*
 - [x] Reverse Proxies (Nginx, Caddy)
 - [x] SSL/TLS Certificates
 - [x] Microservices Architecture
 - [x] API Gateways
 - [x] Secret Management
+
+## Edge Routing & Ingress Learnings
+
+- Browser requests to relative paths such as `/api/v1/auth/login` stay on the page's origin. At `https://localhost`, the browser sends the request to NGINX on port 443; NGINX matches `/api/` and proxies it to the private API Gateway.
+- A request to `http://localhost:4000` goes directly to the host's port 4000. If Compose does not publish that port, the connection fails before NGINX receives the request.
+- Same-origin routing avoids browser CORS checks because the page and API share scheme, host, and port.
+- Keep the canonical Compose `syslog` driver when the Azure VM's Azure Monitor Agent collects host syslog into Log Analytics. A local environment without syslog may need an explicitly selected local-only Compose override; do not replace the cloud logging path to solve a laptop-only limitation.
+- **Kubernetes equivalent:** NGINX path routing maps to an Ingress rule forwarding `/api` to a ClusterIP Service; container stdout/stderr is collected by the node logging pipeline.
 
 ## Career Advice & Transition Suggestions
 
@@ -875,6 +903,4 @@ To transition from backend to DevOps/Cloud in the long run:
    For example, deploy a containerized backend on AWS ECS or Azure Container Apps,
    behind a load balancer, talking to a managed cloud database.
 4. Certifications (Optional but helpful for resume scanning): AWS Certified Cloud
-   Practitioner / Solutions Architect Associate, or Microsoft Azure Fundamentals (AZ-
-
-900) / Administrator (AZ-104).
+   Practitioner / Solutions Architect Associate, or Microsoft Azure Fundamentals (AZ-900) / Administrator (AZ-104).

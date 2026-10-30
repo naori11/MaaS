@@ -1,4 +1,4 @@
-const DEFAULT_GATEWAY_URL = "http://localhost:4000";
+const DEFAULT_GATEWAY_URL = "";
 const FALLBACK_ERROR_MESSAGE = "Unable to provision account. Please try again.";
 
 type RegisterInput = {

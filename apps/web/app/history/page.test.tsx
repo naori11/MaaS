@@ -54,7 +54,7 @@ describe("History page", () => {
       expect(screen.queryByText("#TX-94281-MA")).not.toBeInTheDocument();
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith("http://localhost:4000/api/v1/ledger/transactions?limit=100", {
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/ledger/transactions?limit=100", {
       method: "GET",
       credentials: "include",
       headers: { Authorization: "Bearer test-token" },

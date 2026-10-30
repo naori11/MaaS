@@ -9,7 +9,7 @@ const endpointByOperator: Record<CalculatorOperator, string> = {
   "÷": "/api/v1/calculate/divide",
 };
 
-const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
 
 interface GatewayMathResponse {
   operation: "addition" | "subtraction" | "multiplication" | "division";

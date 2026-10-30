@@ -90,13 +90,13 @@ describe("Signup page", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:4000/api/v1/auth/register",
+      "/api/v1/auth/register",
       expect.objectContaining({ method: "POST" }),
     );
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:4000/api/v1/auth/login",
+      "/api/v1/auth/login",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -155,7 +155,7 @@ describe("Signup page", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:4000/api/v1/auth/register",
+      "/api/v1/auth/register",
       expect.objectContaining({ method: "POST" }),
     );
   });

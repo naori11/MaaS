@@ -35,9 +35,7 @@ function SignupPageContent() {
     setIsSubmitting(true);
 
     try {
-      const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "http://localhost:4000").replace(/\/$/, "");
-
-      const registerResponse = await fetch(`${gatewayBaseUrl}/api/v1/auth/register`, {
+      const registerResponse = await fetch("/api/v1/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -55,7 +53,7 @@ function SignupPageContent() {
         return;
       }
 
-      const loginResponse = await fetch(`${gatewayBaseUrl}/api/v1/auth/login`, {
+      const loginResponse = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
