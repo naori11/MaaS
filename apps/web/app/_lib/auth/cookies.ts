@@ -35,7 +35,8 @@ function setCookie(name: string, value: string, maxAgeSeconds: number) {
     return;
   }
 
-  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`;
+  const secureAttribute = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax${secureAttribute}`;
 }
 
 function clearCookie(name: string) {
@@ -43,7 +44,8 @@ function clearCookie(name: string) {
     return;
   }
 
-  document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
+  const secureAttribute = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${name}=; path=/; max-age=0; samesite=lax${secureAttribute}`;
 }
 
 export function writeAuthCookies(payload: { token: string; tokenType: string; expiresInSeconds: number }) {
@@ -63,6 +65,11 @@ export function clearAuthCookies() {
 export function readAuthTokenFromBrowserCookies(): string | null {
   const cookies = parseDocumentCookies();
   return cookies.get(AUTH_TOKEN_COOKIE) ?? null;
+}
+
+export function readAuthTokenTypeFromBrowserCookies(): string | null {
+  const cookies = parseDocumentCookies();
+  return cookies.get(AUTH_TOKEN_TYPE_COOKIE) ?? null;
 }
 
 export function readAuthTokenFromRequestCookies(request: NextRequest): string | null {

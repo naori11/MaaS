@@ -1,5 +1,5 @@
 import type { CalculatorOperator } from "../calculator/model";
-import { clearAuthSession, getAuthTokenFromBrowserSession, getAuthTokenTypeFromBrowserSession } from "../mock-auth";
+import { clearAuthSession, getAuthTokenFromBrowserSession, getAuthTokenTypeFromBrowserSession } from "../auth/session";
 import { parseGatewayError } from "./errors";
 
 const endpointByOperator: Record<CalculatorOperator, string> = {

@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MotionSection } from "../_components/motion/motion-primitives";
 import { AuthShell } from "../_components/auth-shell";
-import { resolvePostAuthRedirect, setAuthSession } from "../_lib/mock-auth";
+import { resolvePostAuthRedirect, setAuthSession } from "../_lib/auth/session";
 
 function SignupPageContent() {
   const [name, setName] = useState("");
