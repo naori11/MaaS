@@ -885,8 +885,8 @@ flowchart LR
 - Browser requests to relative paths such as `/api/v1/auth/login` stay on the page's origin. At `https://localhost`, the browser sends the request to NGINX on port 443; NGINX matches `/api/` and proxies it to the private API Gateway.
 - A request to `http://localhost:4000` goes directly to the host's port 4000. If Compose does not publish that port, the connection fails before NGINX receives the request.
 - Same-origin routing avoids browser CORS checks because the page and API share scheme, host, and port.
-- Compose `json-file` logs remain available through `docker compose logs` without requiring a host syslog service. Kubernetes workloads generally write to stdout/stderr for the node's log collector.
-- **Kubernetes equivalent:** NGINX path routing maps to an Ingress rule forwarding `/api` to a ClusterIP Service; container logs are collected by the node logging pipeline.
+- Keep the canonical Compose `syslog` driver when the Azure VM's Azure Monitor Agent collects host syslog into Log Analytics. A local environment without syslog may need an explicitly selected local-only Compose override; do not replace the cloud logging path to solve a laptop-only limitation.
+- **Kubernetes equivalent:** NGINX path routing maps to an Ingress rule forwarding `/api` to a ClusterIP Service; container stdout/stderr is collected by the node logging pipeline.
 
 ## Career Advice & Transition Suggestions
 
