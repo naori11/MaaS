@@ -5,4 +5,4 @@ asyncpg==0.32.0
 greenlet==3.5.6
 PyJWT==2.15.1
 xendit-python==7.0.0
-python-dateutil==2.9.0
+python-dateutil==3.0.0
