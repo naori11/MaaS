@@ -72,12 +72,12 @@ def _valid_payload(request_id: str = "req-123", created_at: str = "2026-03-30T20
     }
 
 
-def test_enqueue_valid_event_returns_202():
+def test_enqueue_valid_event_returns_201_after_persistence():
     with TestClient(main.app) as client:
         response = client.post("/api/v1/ledger/transactions", json=_valid_payload())
 
-    assert response.status_code == 202
-    assert response.json() == {"status": "accepted"}
+    assert response.status_code == 201
+    assert response.json() == {"status": "created"}
 
 
 def test_enqueue_malformed_payload_returns_400():
@@ -142,13 +142,11 @@ def test_get_transactions_returns_recent_records_with_limit():
     assert payload_2["math_transaction_id"] in transaction_ids_in_response
 
 
-def test_queue_full_returns_503(monkeypatch):
+def test_unavailable_database_returns_503(monkeypatch):
     with TestClient(main.app) as client:
-        full_queue = main.asyncio.Queue(maxsize=1)
-        full_queue.put_nowait(main.LedgerEventIn(**_valid_payload()))
-        monkeypatch.setattr(main, "_QUEUE", full_queue)
+        monkeypatch.setattr(main, "_SESSION_FACTORY", None)
 
-        response = client.post("/api/v1/ledger/transactions", json=_valid_payload("req-overflow"))
+        response = client.post("/api/v1/ledger/transactions", json=_valid_payload("req-no-db"))
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Ledger queue is full"}
+    assert response.json() == {"detail": "Ledger database unavailable"}
