@@ -12,51 +12,83 @@ updates:
       prod-dependencies:
         dependency-type: "production"
 
-  # Python microservices
+  # Python microservices (grouped per service to prevent PR explosion)
   - package-ecosystem: "pip"
     directory: "/services/api-gateway"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/billing"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/identity"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/ledger"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/math-add"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/math-subtract"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/math-multiply"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "pip"
     directory: "/services/math-divide"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
