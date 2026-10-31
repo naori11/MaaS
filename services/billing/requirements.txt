@@ -1,7 +1,7 @@
-fastapi==0.135.2
-uvicorn==0.41.0
-sqlalchemy==2.0.44
-asyncpg==0.31.0
-PyJWT==2.13.0
+fastapi==0.162.0
+uvicorn==0.54.0
+sqlalchemy==2.1.6
+asyncpg==0.32.0
+PyJWT==2.15.1
 xendit-python==7.0.0
 python-dateutil==2.9.0
