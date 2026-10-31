@@ -41,6 +41,14 @@ class FakeResponse:
     def json(self) -> dict[str, Any]:
         return self._body
 
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                "upstream error",
+                request=httpx.Request("POST", "http://test"),
+                response=httpx.Response(self.status_code),
+            )
+
 
 Responder = Callable[[str, dict[str, Any], dict[str, str]], FakeResponse | Exception]
 
@@ -105,7 +113,14 @@ def setup(monkeypatch):
     monkeypatch.setattr(main, "JWT_SECRET", "gateway-test-secret")
     monkeypatch.setattr(main, "JWT_ALGORITHM", "HS256")
     FakeAsyncClient.requests = []
-    FakeAsyncClient.responder = lambda url, json, headers: FakeResponse(200, {"ok": True})
+    def default_responder(url, json, headers):
+        if "/api/v1/calculate/" in url:
+            return FakeResponse(200, {"result": 3})
+        if url.endswith("/api/v1/ledger/transactions"):
+            return FakeResponse(201, {"status": "created"})
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = default_responder
     yield
     main._RATE_LIMIT_BUCKET.clear()
 
@@ -429,7 +444,7 @@ def test_successful_calculate_publishes_ledger_event():
                 },
             )
         if url.endswith("/api/v1/ledger/transactions"):
-            return FakeResponse(202, {"status": "accepted"})
+            return FakeResponse(201, {"status": "created"})
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = responder
@@ -471,7 +486,7 @@ def test_failed_calculate_does_not_publish_ledger_event():
         if url.endswith("/api/v1/calculate/add"):
             return FakeResponse(400, {"detail": "Malformed payload"})
         if url.endswith("/api/v1/ledger/transactions"):
-            return FakeResponse(202, {"status": "accepted"})
+            return FakeResponse(201, {"status": "created"})
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = responder
@@ -487,7 +502,7 @@ def test_failed_calculate_does_not_publish_ledger_event():
     assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/calculate/add")
 
 
-def test_ledger_publish_failure_does_not_change_calculate_response():
+def test_ledger_publish_failure_prevents_successful_calculate_response():
     def responder(url, json, headers):
         if url.endswith("/api/v1/calculate/add"):
             return FakeResponse(
@@ -511,10 +526,25 @@ def test_ledger_publish_failure_does_not_change_calculate_response():
         headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "operation": "addition",
-        "result": 3,
-        "transaction_id": "txn-123",
-        "timestamp": "2026-03-31T10:00:00Z",
-    }
+    assert response.status_code == 503
+    assert "transaction history is unavailable" in response.json()["error"]["message"]
+
+
+def test_ledger_rejection_prevents_successful_calculate_response():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/calculate/add"):
+            return FakeResponse(200, {"result": 3})
+        if url.endswith("/api/v1/ledger/transactions"):
+            return FakeResponse(503, {"detail": "Ledger database unavailable"})
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 503
+    assert "transaction history is unavailable" in response.json()["error"]["message"]

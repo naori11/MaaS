@@ -1,7 +1,6 @@
-import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import uuid4
@@ -15,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT, LEDGER_QUEUE_MAXSIZE
+from config import LEDGER_DEFAULT_LIMIT, LEDGER_MAX_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ class LedgerRecord(BaseModel):
 
 
 class EnqueueResponse(BaseModel):
-    status: Literal["accepted"]
+    status: Literal["created"]
 
 
 class LedgerTransactionsResponse(BaseModel):
@@ -69,9 +68,7 @@ class LedgerRecordORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
-_QUEUE: asyncio.Queue[LedgerEventIn] | None = None
 _SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
-_WORKER_TASK: asyncio.Task[None] | None = None
 
 
 async def request_validation_exception_handler(_, __):
@@ -121,31 +118,9 @@ def _to_api_record(row: LedgerRecordORM) -> LedgerRecord:
     )
 
 
-async def _worker(queue: asyncio.Queue[LedgerEventIn], session_factory: async_sessionmaker[AsyncSession]) -> None:
-    while True:
-        item = await queue.get()
-        try:
-            async with session_factory() as session:
-                row = LedgerRecordORM(
-                    request_id=item.request_id,
-                    operation_type=item.operation_type,
-                    operand_a=float(item.operand_a),
-                    operand_b=float(item.operand_b),
-                    result=float(item.result),
-                    math_transaction_id=item.math_transaction_id,
-                    created_at=_parse_iso8601_utc(item.created_at),
-                )
-                session.add(row)
-                await session.commit()
-        except (HTTPException, SQLAlchemyError):
-            logger.exception("Failed to persist ledger event")
-        finally:
-            queue.task_done()
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global _QUEUE, _SESSION_FACTORY, _WORKER_TASK
+    global _SESSION_FACTORY
 
     database_url = _database_url_from_env()
     engine = create_async_engine(database_url)
@@ -155,19 +130,11 @@ async def lifespan(_: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     _SESSION_FACTORY = session_factory
-    _QUEUE = asyncio.Queue(maxsize=LEDGER_QUEUE_MAXSIZE)
-    _WORKER_TASK = asyncio.create_task(_worker(_QUEUE, session_factory))
 
     try:
         yield
     finally:
-        if _WORKER_TASK is not None:
-            _WORKER_TASK.cancel()
-            with suppress(asyncio.CancelledError):
-                await _WORKER_TASK
         await engine.dispose()
-        _WORKER_TASK = None
-        _QUEUE = None
         _SESSION_FACTORY = None
 
 
@@ -175,19 +142,32 @@ app = FastAPI(lifespan=lifespan)
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
 
 
-@app.post("/api/v1/ledger/transactions", status_code=202, response_model=EnqueueResponse)
+@app.post("/api/v1/ledger/transactions", status_code=201, response_model=EnqueueResponse)
 async def enqueue_transaction(payload: LedgerEventIn) -> EnqueueResponse:
-    _parse_iso8601_utc(payload.created_at)
+    created_at = _parse_iso8601_utc(payload.created_at)
 
-    if _QUEUE is None:
-        raise HTTPException(status_code=500, detail="Ledger queue unavailable")
+    if _SESSION_FACTORY is None:
+        raise HTTPException(status_code=503, detail="Ledger database unavailable")
 
     try:
-        _QUEUE.put_nowait(payload)
-    except asyncio.QueueFull as exc:
-        raise HTTPException(status_code=503, detail="Ledger queue is full") from exc
+        async with _SESSION_FACTORY() as session:
+            session.add(
+                LedgerRecordORM(
+                    request_id=payload.request_id,
+                    operation_type=payload.operation_type,
+                    operand_a=float(payload.operand_a),
+                    operand_b=float(payload.operand_b),
+                    result=float(payload.result),
+                    math_transaction_id=payload.math_transaction_id,
+                    created_at=created_at,
+                )
+            )
+            await session.commit()
+    except SQLAlchemyError as exc:
+        logger.exception("Failed to persist ledger event")
+        raise HTTPException(status_code=503, detail="Ledger database unavailable") from exc
 
-    return EnqueueResponse(status="accepted")
+    return EnqueueResponse(status="created")
 
 
 @app.get("/api/v1/ledger/transactions", response_model=LedgerTransactionsResponse)

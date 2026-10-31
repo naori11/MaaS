@@ -6,7 +6,7 @@ from time import time
 
 import httpx
 import jwt
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
@@ -195,13 +195,18 @@ async def _publish_ledger_event(event: dict, request_id: str) -> None:
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            await client.post(
+            response = await client.post(
                 f"{LEDGER_SERVICE_URL}/api/v1/ledger/transactions",
                 json=event,
                 headers=headers,
             )
+            response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("Failed to publish ledger event: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Calculation could not be confirmed because transaction history is unavailable. Please retry.",
+        ) from exc
 
 
 @app.middleware("http")
@@ -235,7 +240,7 @@ async def unhandled_exception_handler(request: Request, _):
     )
 
 
-async def _proxy_post(request: Request, upstream_url: str, background_tasks: BackgroundTasks | None = None) -> JSONResponse:
+async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     _enforce_rate_limit(request)
 
     user_id = None
@@ -300,18 +305,21 @@ async def _proxy_post(request: Request, upstream_url: str, background_tasks: Bac
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="Invalid upstream response") from exc
 
-    if background_tasks is not None and _publishable_calculate_path(request.url.path):
+    if _publishable_calculate_path(request.url.path):
         try:
             ledger_event = _build_ledger_event(request_id, request.url.path, payload, response_payload)
-            background_tasks.add_task(_publish_ledger_event, ledger_event, request_id)
+            await _publish_ledger_event(ledger_event, request_id)
         except (KeyError, TypeError, ValueError) as exc:
-            logger.warning("Failed to enqueue ledger event: %s", exc)
+            logger.exception("Failed to build ledger event")
+            raise HTTPException(
+                status_code=502,
+                detail="Calculation result could not be recorded in transaction history.",
+            ) from exc
 
     return JSONResponse(
         status_code=upstream_response.status_code,
         content=response_payload,
         headers={"X-Request-ID": request_id},
-        background=background_tasks,
     )
 
 
@@ -398,20 +406,20 @@ async def billing_webhook_xendit(request: Request) -> JSONResponse:
 
 
 @app.post("/api/v1/calculate/add")
-async def add(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/add"], background_tasks)
+async def add(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/add"])
 
 
 @app.post("/api/v1/calculate/subtract")
-async def subtract(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/subtract"], background_tasks)
+async def subtract(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/subtract"])
 
 
 @app.post("/api/v1/calculate/multiply")
-async def multiply(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/multiply"], background_tasks)
+async def multiply(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/multiply"])
 
 
 @app.post("/api/v1/calculate/divide")
-async def divide(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
-    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/divide"], background_tasks)
+async def divide(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/calculate/divide"])
