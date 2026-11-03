@@ -300,6 +300,12 @@ export default function BillingPage() {
           setStatusMessage("Payment was canceled or expired. Please try again.");
         });
 
+        instance.addEventListener("fatal-error", () => {
+          setIsCheckingOut(false);
+          setSdkKey(null);
+          setErrorMessage("Checkout failed to initialize. Please check your connection or try again.");
+        });
+
         instance.addEventListener("will-redirect", () => {
           setStatusMessage("Completing payment...");
         });
