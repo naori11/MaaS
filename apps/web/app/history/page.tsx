@@ -6,7 +6,7 @@ import { MotionButton, MotionCard } from "../_components/motion/motion-primitive
 import { fetchLedgerTransactions } from "../_lib/api/ledger";
 import { toHistoryRows } from "../_lib/history/adapter";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
+import { formatHistoryCalculation, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
 
 type FilterMode = "all" | "success" | "errors";
 
@@ -154,7 +154,7 @@ export default function HistoryPage() {
 
       <section className="overflow-hidden rounded-2xl bg-[#eaf1ff] sm:rounded-3xl">
         <div className="md:hidden">
-            {filteredRows.length > 0 ? (
+          {filteredRows.length > 0 ? (
             <div className="space-y-3 p-3 sm:p-4">
               {filteredRows.map((row, index) => (
                 <motion.article
@@ -168,8 +168,11 @@ export default function HistoryPage() {
                     delay: shouldReduceMotion ? 0 : index * 0.04,
                   }}
                 >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-sm font-black text-[#b60055]">{row.id}</p>
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Date &amp; Time</p>
+                      <p className="text-xs font-medium text-[#4d5d73]">{row.timestamp}</p>
+                    </div>
                     {row.error ? (
                       <div className="flex w-fit items-center gap-1.5 rounded-md bg-[#fb5151]/10 px-2.5 py-1 text-[#b31b25]">
                         <span className="material-symbols-outlined text-sm">error</span>
@@ -183,26 +186,16 @@ export default function HistoryPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="space-y-3 border-t border-[#9eaec7]/20 pt-3">
                     <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Input A</p>
-                      <p className="text-sm font-medium text-[#203044]">{row.inputA}</p>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Calculation</p>
+                      <p className="text-base font-semibold text-[#203044]">{formatHistoryCalculation(row)}</p>
                     </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Input B</p>
-                      <p className="text-sm font-medium text-[#203044]">{row.inputB}</p>
-                    </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Operation</p>
-                      <span className="inline-flex rounded-full bg-[#c9deff] px-2.5 py-1 text-[10px] font-bold text-[#3c4c61]">{row.operation}</span>
-                    </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Result</p>
-                      <p className={`text-sm font-black ${row.error ? "italic text-[#b31b25]" : "text-[#203044]"}`}>{row.result}</p>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Result</p>
+                      <p className={`text-lg font-black ${row.error ? "italic text-[#b31b25]" : "text-[#b60055]"}`}>{row.result}</p>
                     </div>
                   </div>
-
-                  <p className="mt-3 text-[11px] text-[#68788f]">{row.timestamp}</p>
                 </motion.article>
               ))}
             </div>
@@ -216,12 +209,9 @@ export default function HistoryPage() {
             <table className="min-w-full text-left">
               <thead className="bg-[#dce9ff] text-[#4d5d73]">
                 <tr>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Transaction ID</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Input A</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Operation</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Input B</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Result</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Timestamp</th>
+                  <th className="whitespace-nowrap px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Date &amp; Time</th>
+                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Calculation</th>
+                  <th className="px-4 py-4 text-right text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Result</th>
                   <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Status</th>
                 </tr>
               </thead>
@@ -239,14 +229,9 @@ export default function HistoryPage() {
                         delay: shouldReduceMotion ? 0 : index * 0.04,
                       }}
                     >
-                      <td className="px-4 py-4 text-sm font-bold text-[#b60055] lg:px-6">{row.id}</td>
-                      <td className="px-4 py-4 text-sm font-medium lg:px-6">{row.inputA}</td>
-                      <td className="px-4 py-4 lg:px-6">
-                        <span className="rounded-full bg-[#c9deff] px-3 py-1 text-[10px] font-bold text-[#3c4c61]">{row.operation}</span>
-                      </td>
-                      <td className="px-4 py-4 text-sm font-medium lg:px-6">{row.inputB}</td>
-                      <td className={`px-4 py-4 text-sm font-black lg:px-6 ${row.error ? "italic text-[#b31b25]" : "text-[#203044]"}`}>{row.result}</td>
-                      <td className="px-4 py-4 text-xs text-[#68788f] lg:px-6">{row.timestamp}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-xs text-[#68788f] lg:px-6">{row.timestamp}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-[#203044] lg:px-6">{formatHistoryCalculation(row)}</td>
+                      <td className={`px-4 py-4 text-right text-sm font-black lg:px-6 ${row.error ? "italic text-[#b31b25]" : "text-[#b60055]"}`}>{row.result}</td>
                       <td className="px-4 py-4 lg:px-6">
                         {row.error ? (
                           <div className="flex w-fit items-center gap-2 rounded-md bg-[#fb5151]/10 px-3 py-1.5 text-[#b31b25]">
@@ -264,7 +249,7 @@ export default function HistoryPage() {
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-8 text-sm text-[#4d5d73] lg:px-6" colSpan={7}>
+                    <td className="px-4 py-8 text-sm text-[#4d5d73] lg:px-6" colSpan={4}>
                       {isLoading ? "Loading transactions…" : "No transactions available for this filter."}
                     </td>
                   </tr>

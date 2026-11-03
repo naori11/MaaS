@@ -1,7 +1,9 @@
+export type HistoryOperation = "MULTIPLICATION" | "DIVISION" | "SUBTRACTION" | "ADDITION";
+
 export type HistoryRow = {
   id: string;
   inputA: string;
-  operation: string;
+  operation: HistoryOperation;
   inputB: string;
   result: string;
   timestamp: string;
@@ -9,7 +11,16 @@ export type HistoryRow = {
   error: boolean;
 };
 
-export type HistoryOperation = "MULTIPLICATION" | "DIVISION" | "SUBTRACTION" | "ADDITION";
+const operationSymbols: Record<HistoryOperation, string> = {
+  ADDITION: "+",
+  SUBTRACTION: "−",
+  MULTIPLICATION: "×",
+  DIVISION: "÷",
+};
+
+export function formatHistoryCalculation(row: HistoryRow) {
+  return `${row.inputA} ${operationSymbols[row.operation]} ${row.inputB}`;
+}
 
 const HISTORY_STORAGE_KEY = "maas_mock_history";
 
@@ -148,8 +159,8 @@ export function appendHistoryCalculation(inputA: number, operator: "+" | "−" |
 }
 
 export function toHistoryCsv(rows: HistoryRow[]) {
-  const header = ["Transaction ID", "Input A", "Operation", "Input B", "Result", "Timestamp", "Status"];
-  const body = rows.map((row) => [row.id, row.inputA, row.operation, row.inputB, row.result, row.timestamp, row.status]);
+  const header = ["Date & Time", "Calculation", "Result", "Status"];
+  const body = rows.map((row) => [row.timestamp, formatHistoryCalculation(row), row.result, row.status]);
   return [header, ...body]
     .map((line) =>
       line

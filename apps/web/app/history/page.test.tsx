@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toHistoryCsv } from "../_lib/mock-history";
 import HistoryPage from "./page";
 
 const ledgerItems = [
@@ -47,11 +48,16 @@ describe("History page", () => {
 
     expect(screen.getByText(/enterprise logs/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
-    const renderedIds = await screen.findAllByText("txn-ledger-1");
-    expect(renderedIds.length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("12 + 3")).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Date & Time",
+      "Calculation",
+      "Result",
+      "Status",
+    ]);
 
     await waitFor(() => {
-      expect(screen.queryByText("#TX-94281-MA")).not.toBeInTheDocument();
+      expect(screen.queryByText("txn-ledger-1")).not.toBeInTheDocument();
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/ledger/transactions?limit=10", {
@@ -75,7 +81,7 @@ describe("History page", () => {
 
   it("exports filtered rows to csv", async () => {
     render(<HistoryPage />);
-    await screen.findAllByText("txn-ledger-1");
+    await screen.findAllByText("12 + 3");
 
     fireEvent.click(screen.getByRole("button", { name: /export csv/i }));
 
@@ -83,5 +89,24 @@ describe("History page", () => {
       expect(URL.createObjectURL).toHaveBeenCalled();
       expect(URL.revokeObjectURL).toHaveBeenCalled();
     });
+  });
+
+  it("omits transaction IDs from CSV exports", () => {
+    const csv = toHistoryCsv([
+      {
+        id: "internal-transaction-id",
+        inputA: "12",
+        operation: "ADDITION",
+        inputB: "3",
+        result: "15",
+        timestamp: "Apr 10, 2026 · 12:00:00",
+        status: "Success",
+        error: false,
+      },
+    ]);
+
+    expect(csv.split("\n")[0]).toBe('"Date & Time","Calculation","Result","Status"');
+    expect(csv).toContain('"12 + 3"');
+    expect(csv).not.toContain("internal-transaction-id");
   });
 });
