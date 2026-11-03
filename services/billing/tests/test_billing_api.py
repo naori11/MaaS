@@ -426,6 +426,51 @@ def test_webhook_rejects_amount_mismatch(monkeypatch):
     assert body["status"] == "pending_payment"
 
 
+def test_webhook_rejects_missing_amount_without_activating_subscription(monkeypatch):
+    user_id = f"user-{uuid4().hex}"
+    token = _token_for_user(user_id)
+    observed: dict[str, str] = {}
+
+    def _fake_payment_session(*, reference_id: str, amount: int, description: str):
+        observed["reference_id"] = reference_id
+        observed["payment_session_id"] = "ps-test-missing-amount"
+        assert amount == 50
+        assert description == "Standard Plan Upgrade"
+        return main.XenditPaymentSessionResult(
+            components_sdk_key="xnd_public_missing_amount_components_sdk_key",
+            payment_session_id=observed["payment_session_id"],
+            currency="PHP",
+        )
+
+    monkeypatch.setattr(main, "_create_xendit_payment_session", _fake_payment_session)
+
+    with TestClient(main.app) as client:
+        subscribe_response = client.post(
+            "/api/v1/billing/subscribe",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"plan_name": "Standard"},
+        )
+
+        webhook_response = client.post(
+            "/api/v1/billing/webhook/xendit",
+            headers={"x-callback-token": "test-callback-token"},
+            json={
+                "id": observed["payment_session_id"],
+                "reference_id": observed["reference_id"],
+                "status": "PAID",
+            },
+        )
+
+        status_response = client.get(
+            "/api/v1/billing/status",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert subscribe_response.status_code == 200
+    assert webhook_response.status_code == 400
+    assert status_response.json()["status"] == "pending_payment"
+
+
 def test_webhook_rejects_currency_mismatch(monkeypatch):
     user_id = f"user-{uuid4().hex}"
     token = _token_for_user(user_id)
@@ -712,7 +757,7 @@ def test_webhook_rejects_request_with_missing_callback_token():
 def test_components_origins_defaults_to_https_localhost(monkeypatch):
     monkeypatch.delenv("XENDIT_COMPONENTS_ORIGINS", raising=False)
 
-    assert main.get_xendit_components_origins() == ["https://localhost:3000"]
+    assert main.get_xendit_components_origins() == ["https://localhost", "https://localhost:3000"]
 
 
 def test_components_origins_normalizes_to_https(monkeypatch):

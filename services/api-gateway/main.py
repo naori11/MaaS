@@ -25,18 +25,14 @@ from config import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
+    get_cors_origins,
 )
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://localhost:3000",
-    "https://127.0.0.1:3000",
-]
+origins = get_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,

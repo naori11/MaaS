@@ -43,11 +43,11 @@ def get_xendit_callback_token() -> str:
 def get_xendit_components_origins() -> list[str]:
     raw_origins = _optional_env("XENDIT_COMPONENTS_ORIGINS")
     if raw_origins is None:
-        return ["https://localhost:3000"]
+        return ["https://localhost", "https://localhost:3000"]
 
     origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
     if not origins:
-        return ["https://localhost:3000"]
+        return ["https://localhost", "https://localhost:3000"]
 
     normalized_origins: list[str] = []
     for origin in origins:

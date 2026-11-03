@@ -80,6 +80,7 @@ describe("Billing page", () => {
 
     expect(addEventListener).toHaveBeenCalledWith("session-complete", expect.any(Function));
     expect(addEventListener).toHaveBeenCalledWith("session-expired-or-canceled", expect.any(Function));
+    expect(addEventListener).toHaveBeenCalledWith("fatal-error", expect.any(Function));
     expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Hobby");
     expect(screen.getByRole("status")).toHaveTextContent("Complete your embedded checkout to activate Pro.");
   });
@@ -141,6 +142,7 @@ describe("Billing page", () => {
 
     expect(addEventListener).toHaveBeenCalledWith("session-complete", expect.any(Function));
     expect(addEventListener).toHaveBeenCalledWith("session-expired-or-canceled", expect.any(Function));
+    expect(addEventListener).toHaveBeenCalledWith("fatal-error", expect.any(Function));
   });
 
   it("shows api error when status loading fails", async () => {
