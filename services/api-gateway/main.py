@@ -174,9 +174,16 @@ def _operation_type_from_path(path: str) -> str:
     return operation_map[suffix]
 
 
-def _build_ledger_event(request_id: str, path: str, request_payload: dict, response_payload: dict) -> dict:
+def _build_ledger_event(
+    request_id: str,
+    user_id: str,
+    path: str,
+    request_payload: dict,
+    response_payload: dict,
+) -> dict:
     return {
         "request_id": request_id,
+        "user_id": user_id,
         "operation_type": _operation_type_from_path(path),
         "operand_a": request_payload["operand_a"],
         "operand_b": request_payload["operand_b"],
@@ -307,7 +314,15 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
 
     if _publishable_calculate_path(request.url.path):
         try:
-            ledger_event = _build_ledger_event(request_id, request.url.path, payload, response_payload)
+            if user_id is None:
+                raise HTTPException(status_code=401, detail="Missing authenticated user")
+            ledger_event = _build_ledger_event(
+                request_id,
+                user_id,
+                request.url.path,
+                payload,
+                response_payload,
+            )
             await _publish_ledger_event(ledger_event, request_id)
         except (KeyError, TypeError, ValueError) as exc:
             logger.exception("Failed to build ledger event")

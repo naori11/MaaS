@@ -16,10 +16,14 @@ export type LedgerTransaction = {
 
 export type LedgerTransactionsResponse = {
   items: LedgerTransaction[];
+  next_cursor: string | null;
 };
 
-export async function fetchLedgerTransactions(limit: number) {
+export async function fetchLedgerTransactions(limit = 10, cursor?: string | null) {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) {
+    params.set("cursor", cursor);
+  }
   const token = getAuthTokenFromBrowserSession();
   const authorization = token ? `Bearer ${token}` : null;
   const headers = authorization ? { Authorization: authorization } : undefined;

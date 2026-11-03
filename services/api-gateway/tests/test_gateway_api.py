@@ -331,6 +331,7 @@ def test_ledger_transactions_forwards_get_with_authorization_and_query_params():
     assert response.status_code == 200
     assert FakeAsyncClient.requests[0]["method"] == "GET"
     assert FakeAsyncClient.requests[0]["url"] == f"{main.LEDGER_SERVICE_URL}/api/v1/ledger/transactions?limit=2"
+    assert FakeAsyncClient.requests[0]["headers"]["X-User-Id"] == "user-123"
 
 
 def test_rate_limit_returns_429(monkeypatch):
@@ -460,6 +461,7 @@ def test_successful_calculate_publishes_ledger_event():
     assert FakeAsyncClient.requests[1]["url"].endswith("/api/v1/ledger/transactions")
     ledger_payload = FakeAsyncClient.requests[1]["json"]
     assert ledger_payload["request_id"] == "req-abc"
+    assert ledger_payload["user_id"] == "user-123"
     assert ledger_payload["operation_type"] == "addition"
     assert ledger_payload["operand_a"] == 1
     assert ledger_payload["operand_b"] == 2

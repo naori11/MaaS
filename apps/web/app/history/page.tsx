@@ -6,40 +6,51 @@ import { MotionButton, MotionCard } from "../_components/motion/motion-primitive
 import { fetchLedgerTransactions } from "../_lib/api/ledger";
 import { toHistoryRows } from "../_lib/history/adapter";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { getSeedHistoryRows, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
+import { formatHistoryCalculation, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
 
 type FilterMode = "all" | "success" | "errors";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 10;
 
 export default function HistoryPage() {
   const shouldReduceMotion = useReducedMotion();
-  const [rows, setRows] = useState<HistoryRow[]>(getSeedHistoryRows());
+  const [rows, setRows] = useState<HistoryRow[]>([]);
   const [filter, setFilter] = useState<FilterMode>("all");
-  const [page, setPage] = useState(1);
+  const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const currentCursor = pageCursors[pageCursors.length - 1] ?? null;
 
   useEffect(() => {
     let isActive = true;
 
     void (async () => {
       try {
-        const response = await fetchLedgerTransactions(100);
+        setIsLoading(true);
+        const response = await fetchLedgerTransactions(PAGE_SIZE, currentCursor);
         if (!isActive) {
           return;
         }
         setRows(toHistoryRows(response.items));
+        setNextCursor(response.next_cursor ?? null);
       } catch {
         if (!isActive) {
           return;
         }
         setRows([]);
+        setNextCursor(null);
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     })();
 
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [currentCursor]);
 
   const filteredRows = useMemo(() => {
     if (filter === "success") {
@@ -53,21 +64,7 @@ export default function HistoryPage() {
     return rows;
   }, [filter, rows]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, page]);
-
   const handleFilterCycle = () => {
-    setPage(1);
     setFilter((current) => {
       if (current === "all") {
         return "success";
@@ -81,19 +78,48 @@ export default function HistoryPage() {
     });
   };
 
-  const exportCsv = () => {
-    const csv = toHistoryCsv(filteredRows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+  const exportCsv = async () => {
+    setIsExporting(true);
+    const allRows: HistoryRow[] = [];
+    let cursor: string | null = null;
 
-    link.href = url;
-    link.setAttribute("download", "maas-history.csv");
-    document.body.append(link);
-    link.click();
-    link.remove();
+    try {
+      do {
+        const response = await fetchLedgerTransactions(PAGE_SIZE, cursor);
+        allRows.push(...toHistoryRows(response.items));
+        cursor = response.next_cursor;
+      } while (cursor);
 
-    URL.revokeObjectURL(url);
+      const exportRows = allRows.filter((row) => {
+        if (filter === "success") return !row.error;
+        if (filter === "errors") return row.error;
+        return true;
+      });
+      const csv = toHistoryCsv(exportRows);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.setAttribute("download", "maas-history.csv");
+      document.body.append(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (nextCursor) {
+      setPageCursors((current) => [...current, nextCursor]);
+    }
+  };
+
+  const goToPreviousPage = () => {
+    setPageCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
   };
 
   const filterLabel =
@@ -117,19 +143,20 @@ export default function HistoryPage() {
           <MotionButton
             type="button"
             onClick={exportCsv}
+            disabled={isLoading || isExporting}
             className="maas-enterprise-gradient maas-touch-target flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#b60055]/20 sm:px-5 sm:text-sm"
           >
             <span className="material-symbols-outlined text-sm">download</span>
-            Export CSV
+            {isExporting ? "Preparing CSV…" : "Export CSV"}
           </MotionButton>
         </div>
       </div>
 
       <section className="overflow-hidden rounded-2xl bg-[#eaf1ff] sm:rounded-3xl">
         <div className="md:hidden">
-          {pagedRows.length > 0 ? (
+          {filteredRows.length > 0 ? (
             <div className="space-y-3 p-3 sm:p-4">
-              {pagedRows.map((row, index) => (
+              {filteredRows.map((row, index) => (
                 <motion.article
                   key={row.id}
                   className="rounded-xl bg-white/75 p-4"
@@ -141,8 +168,11 @@ export default function HistoryPage() {
                     delay: shouldReduceMotion ? 0 : index * 0.04,
                   }}
                 >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-sm font-black text-[#b60055]">{row.id}</p>
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Date &amp; Time</p>
+                      <p className="text-xs font-medium text-[#4d5d73]">{row.timestamp}</p>
+                    </div>
                     {row.error ? (
                       <div className="flex w-fit items-center gap-1.5 rounded-md bg-[#fb5151]/10 px-2.5 py-1 text-[#b31b25]">
                         <span className="material-symbols-outlined text-sm">error</span>
@@ -156,31 +186,21 @@ export default function HistoryPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="space-y-3 border-t border-[#9eaec7]/20 pt-3">
                     <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Input A</p>
-                      <p className="text-sm font-medium text-[#203044]">{row.inputA}</p>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Calculation</p>
+                      <p className="text-base font-semibold text-[#203044]">{formatHistoryCalculation(row)}</p>
                     </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Input B</p>
-                      <p className="text-sm font-medium text-[#203044]">{row.inputB}</p>
-                    </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Operation</p>
-                      <span className="inline-flex rounded-full bg-[#c9deff] px-2.5 py-1 text-[10px] font-bold text-[#3c4c61]">{row.operation}</span>
-                    </div>
-                    <div>
-                      <p className="mb-1 font-semibold uppercase tracking-[0.08em] text-[#68788f]">Result</p>
-                      <p className={`text-sm font-black ${row.error ? "italic text-[#b31b25]" : "text-[#203044]"}`}>{row.result}</p>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#68788f]">Result</p>
+                      <p className={`text-lg font-black ${row.error ? "italic text-[#b31b25]" : "text-[#b60055]"}`}>{row.result}</p>
                     </div>
                   </div>
-
-                  <p className="mt-3 text-[11px] text-[#68788f]">{row.timestamp}</p>
                 </motion.article>
               ))}
             </div>
           ) : (
-            <p className="p-4 text-sm text-[#4d5d73]">No transactions available for this filter.</p>
+            <p className="p-4 text-sm text-[#4d5d73]">{isLoading ? "Loading transactions…" : "No transactions available for this filter."}</p>
           )}
         </div>
 
@@ -189,18 +209,15 @@ export default function HistoryPage() {
             <table className="min-w-full text-left">
               <thead className="bg-[#dce9ff] text-[#4d5d73]">
                 <tr>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Transaction ID</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Input A</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Operation</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Input B</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Result</th>
-                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Timestamp</th>
+                  <th className="whitespace-nowrap px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Date &amp; Time</th>
+                  <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Calculation</th>
+                  <th className="px-4 py-4 text-right text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Result</th>
                   <th className="px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] lg:px-6">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {pagedRows.length > 0 ? (
-                  pagedRows.map((row, index) => (
+                {filteredRows.length > 0 ? (
+                  filteredRows.map((row, index) => (
                     <motion.tr
                       key={row.id}
                       className={index % 2 === 1 ? "bg-white/40" : undefined}
@@ -212,14 +229,9 @@ export default function HistoryPage() {
                         delay: shouldReduceMotion ? 0 : index * 0.04,
                       }}
                     >
-                      <td className="px-4 py-4 text-sm font-bold text-[#b60055] lg:px-6">{row.id}</td>
-                      <td className="px-4 py-4 text-sm font-medium lg:px-6">{row.inputA}</td>
-                      <td className="px-4 py-4 lg:px-6">
-                        <span className="rounded-full bg-[#c9deff] px-3 py-1 text-[10px] font-bold text-[#3c4c61]">{row.operation}</span>
-                      </td>
-                      <td className="px-4 py-4 text-sm font-medium lg:px-6">{row.inputB}</td>
-                      <td className={`px-4 py-4 text-sm font-black lg:px-6 ${row.error ? "italic text-[#b31b25]" : "text-[#203044]"}`}>{row.result}</td>
-                      <td className="px-4 py-4 text-xs text-[#68788f] lg:px-6">{row.timestamp}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-xs text-[#68788f] lg:px-6">{row.timestamp}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-[#203044] lg:px-6">{formatHistoryCalculation(row)}</td>
+                      <td className={`px-4 py-4 text-right text-sm font-black lg:px-6 ${row.error ? "italic text-[#b31b25]" : "text-[#b60055]"}`}>{row.result}</td>
                       <td className="px-4 py-4 lg:px-6">
                         {row.error ? (
                           <div className="flex w-fit items-center gap-2 rounded-md bg-[#fb5151]/10 px-3 py-1.5 text-[#b31b25]">
@@ -237,8 +249,8 @@ export default function HistoryPage() {
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-8 text-sm text-[#4d5d73] lg:px-6" colSpan={7}>
-                      No transactions available for this filter.
+                    <td className="px-4 py-8 text-sm text-[#4d5d73] lg:px-6" colSpan={4}>
+                      {isLoading ? "Loading transactions…" : "No transactions available for this filter."}
                     </td>
                   </tr>
                 )}
@@ -249,23 +261,23 @@ export default function HistoryPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[#dce9ff] px-4 py-4 lg:px-6">
           <p className="text-xs text-[#4d5d73]">
-            Showing <span className="font-bold">{pagedRows.length}</span> of {filteredRows.length} transactions
+            Page <span className="font-bold">{pageCursors.length}</span> · Showing <span className="font-bold">{filteredRows.length}</span> transactions
           </p>
           <div className="flex items-center gap-2">
             <MotionButton
               type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
+              onClick={goToPreviousPage}
+              disabled={pageCursors.length <= 1 || isLoading}
               className="maas-touch-target flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#4d5d73] disabled:opacity-40"
               ariaLabel="Previous page"
             >
               <span className="material-symbols-outlined">chevron_left</span>
             </MotionButton>
-            <span className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-[#b60055] px-3 text-xs font-bold text-white">{page}</span>
+            <span className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-[#b60055] px-3 text-xs font-bold text-white">{pageCursors.length}</span>
             <MotionButton
               type="button"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages}
+              onClick={goToNextPage}
+              disabled={!nextCursor || isLoading}
               className="maas-touch-target flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#4d5d73] disabled:opacity-40"
               ariaLabel="Next page"
             >
