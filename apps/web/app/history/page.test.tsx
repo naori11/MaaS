@@ -32,7 +32,7 @@ describe("History page", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ items: ledgerItems }),
+        json: async () => ({ items: ledgerItems, next_cursor: null }),
       }),
     );
     HTMLAnchorElement.prototype.click = vi.fn();
@@ -54,7 +54,7 @@ describe("History page", () => {
       expect(screen.queryByText("#TX-94281-MA")).not.toBeInTheDocument();
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/ledger/transactions?limit=100", {
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/ledger/transactions?limit=10", {
       method: "GET",
       credentials: "include",
       headers: { Authorization: "Bearer test-token" },
@@ -73,12 +73,15 @@ describe("History page", () => {
     expect(screen.getByRole("button", { name: /filter view: errors/i })).toBeInTheDocument();
   });
 
-  it("exports filtered rows to csv", () => {
+  it("exports filtered rows to csv", async () => {
     render(<HistoryPage />);
+    await screen.findAllByText("txn-ledger-1");
 
     fireEvent.click(screen.getByRole("button", { name: /export csv/i }));
 
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(URL.revokeObjectURL).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(URL.createObjectURL).toHaveBeenCalled();
+      expect(URL.revokeObjectURL).toHaveBeenCalled();
+    });
   });
 });

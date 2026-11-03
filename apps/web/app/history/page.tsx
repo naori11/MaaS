@@ -6,40 +6,51 @@ import { MotionButton, MotionCard } from "../_components/motion/motion-primitive
 import { fetchLedgerTransactions } from "../_lib/api/ledger";
 import { toHistoryRows } from "../_lib/history/adapter";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { getSeedHistoryRows, toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
+import { toHistoryCsv, type HistoryRow } from "../_lib/mock-history";
 
 type FilterMode = "all" | "success" | "errors";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 10;
 
 export default function HistoryPage() {
   const shouldReduceMotion = useReducedMotion();
-  const [rows, setRows] = useState<HistoryRow[]>(getSeedHistoryRows());
+  const [rows, setRows] = useState<HistoryRow[]>([]);
   const [filter, setFilter] = useState<FilterMode>("all");
-  const [page, setPage] = useState(1);
+  const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const currentCursor = pageCursors[pageCursors.length - 1] ?? null;
 
   useEffect(() => {
     let isActive = true;
 
     void (async () => {
       try {
-        const response = await fetchLedgerTransactions(100);
+        setIsLoading(true);
+        const response = await fetchLedgerTransactions(PAGE_SIZE, currentCursor);
         if (!isActive) {
           return;
         }
         setRows(toHistoryRows(response.items));
+        setNextCursor(response.next_cursor ?? null);
       } catch {
         if (!isActive) {
           return;
         }
         setRows([]);
+        setNextCursor(null);
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     })();
 
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [currentCursor]);
 
   const filteredRows = useMemo(() => {
     if (filter === "success") {
@@ -53,21 +64,7 @@ export default function HistoryPage() {
     return rows;
   }, [filter, rows]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredRows.slice(start, start + PAGE_SIZE);
-  }, [filteredRows, page]);
-
   const handleFilterCycle = () => {
-    setPage(1);
     setFilter((current) => {
       if (current === "all") {
         return "success";
@@ -81,19 +78,48 @@ export default function HistoryPage() {
     });
   };
 
-  const exportCsv = () => {
-    const csv = toHistoryCsv(filteredRows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+  const exportCsv = async () => {
+    setIsExporting(true);
+    const allRows: HistoryRow[] = [];
+    let cursor: string | null = null;
 
-    link.href = url;
-    link.setAttribute("download", "maas-history.csv");
-    document.body.append(link);
-    link.click();
-    link.remove();
+    try {
+      do {
+        const response = await fetchLedgerTransactions(PAGE_SIZE, cursor);
+        allRows.push(...toHistoryRows(response.items));
+        cursor = response.next_cursor;
+      } while (cursor);
 
-    URL.revokeObjectURL(url);
+      const exportRows = allRows.filter((row) => {
+        if (filter === "success") return !row.error;
+        if (filter === "errors") return row.error;
+        return true;
+      });
+      const csv = toHistoryCsv(exportRows);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.setAttribute("download", "maas-history.csv");
+      document.body.append(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (nextCursor) {
+      setPageCursors((current) => [...current, nextCursor]);
+    }
+  };
+
+  const goToPreviousPage = () => {
+    setPageCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
   };
 
   const filterLabel =
@@ -117,19 +143,20 @@ export default function HistoryPage() {
           <MotionButton
             type="button"
             onClick={exportCsv}
+            disabled={isLoading || isExporting}
             className="maas-enterprise-gradient maas-touch-target flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-xs font-bold text-white shadow-lg shadow-[#b60055]/20 sm:px-5 sm:text-sm"
           >
             <span className="material-symbols-outlined text-sm">download</span>
-            Export CSV
+            {isExporting ? "Preparing CSV…" : "Export CSV"}
           </MotionButton>
         </div>
       </div>
 
       <section className="overflow-hidden rounded-2xl bg-[#eaf1ff] sm:rounded-3xl">
         <div className="md:hidden">
-          {pagedRows.length > 0 ? (
+            {filteredRows.length > 0 ? (
             <div className="space-y-3 p-3 sm:p-4">
-              {pagedRows.map((row, index) => (
+              {filteredRows.map((row, index) => (
                 <motion.article
                   key={row.id}
                   className="rounded-xl bg-white/75 p-4"
@@ -180,7 +207,7 @@ export default function HistoryPage() {
               ))}
             </div>
           ) : (
-            <p className="p-4 text-sm text-[#4d5d73]">No transactions available for this filter.</p>
+            <p className="p-4 text-sm text-[#4d5d73]">{isLoading ? "Loading transactions…" : "No transactions available for this filter."}</p>
           )}
         </div>
 
@@ -199,8 +226,8 @@ export default function HistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedRows.length > 0 ? (
-                  pagedRows.map((row, index) => (
+                {filteredRows.length > 0 ? (
+                  filteredRows.map((row, index) => (
                     <motion.tr
                       key={row.id}
                       className={index % 2 === 1 ? "bg-white/40" : undefined}
@@ -238,7 +265,7 @@ export default function HistoryPage() {
                 ) : (
                   <tr>
                     <td className="px-4 py-8 text-sm text-[#4d5d73] lg:px-6" colSpan={7}>
-                      No transactions available for this filter.
+                      {isLoading ? "Loading transactions…" : "No transactions available for this filter."}
                     </td>
                   </tr>
                 )}
@@ -249,23 +276,23 @@ export default function HistoryPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[#dce9ff] px-4 py-4 lg:px-6">
           <p className="text-xs text-[#4d5d73]">
-            Showing <span className="font-bold">{pagedRows.length}</span> of {filteredRows.length} transactions
+            Page <span className="font-bold">{pageCursors.length}</span> · Showing <span className="font-bold">{filteredRows.length}</span> transactions
           </p>
           <div className="flex items-center gap-2">
             <MotionButton
               type="button"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
+              onClick={goToPreviousPage}
+              disabled={pageCursors.length <= 1 || isLoading}
               className="maas-touch-target flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#4d5d73] disabled:opacity-40"
               ariaLabel="Previous page"
             >
               <span className="material-symbols-outlined">chevron_left</span>
             </MotionButton>
-            <span className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-[#b60055] px-3 text-xs font-bold text-white">{page}</span>
+            <span className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-[#b60055] px-3 text-xs font-bold text-white">{pageCursors.length}</span>
             <MotionButton
               type="button"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages}
+              onClick={goToNextPage}
+              disabled={!nextCursor || isLoading}
               className="maas-touch-target flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#4d5d73] disabled:opacity-40"
               ariaLabel="Next page"
             >
