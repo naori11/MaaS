@@ -454,38 +454,13 @@ async def billing_webhook_xendit(
 
     paid_amount = _extract_paid_amount(paid_amount=amount_value, amount=amount_value) if amount_value is not None else None
 
-    # payload_currency is populated below; initialize to empty so the TEST MODE
-    # block can set it and the subsequent extraction can detect that.
-    payload_currency: str = ""
-
-    # ⚠️ TEST MODE ONLY - REMOVE FOR PRODUCTION ⚠️
-    # This block allows test webhooks (no amount) to activate subscriptions for testing purposes.
-    # In production, this creates a security vulnerability where attackers could activate
-    # subscriptions without payment by sending webhooks with valid reference_ids but no amounts.
-    # TODO: Remove this entire block before deploying to production
     if paid_amount is None:
-        session_factory = _session_factory_or_500()
-        async with session_factory() as session:
-            intent_result = await session.execute(select(InvoiceIntentORM).where(InvoiceIntentORM.external_id == reference_id))
-            intent = intent_result.scalar_one_or_none()
+        logger.error("Webhook rejected: missing or invalid paid amount")
+        raise HTTPException(status_code=400, detail="Missing or invalid paid amount")
 
-            if intent is not None:
-                # TEST MODE: Process webhook without amount validation
-                logger.warning("⚠️ TEST MODE: Processing webhook without amount validation - reference_id=%s", reference_id)
-                paid_amount = intent.amount  # Use the expected amount from our records
-                payload_currency = intent.currency.upper()
-            else:
-                # No matching intent - this is a connectivity test webhook
-                logger.info("Webhook acknowledged (test webhook): no amount and no matching intent, reference_id=%s", reference_id)
-                return WebhookResponse(received=True)
-    # ⚠️ END TEST MODE BLOCK ⚠️
-
-    # Extract currency from root level or nested data field only when it has not
-    # already been populated from the stored intent (TEST MODE path above).
-    if not payload_currency:
-        payload_currency = (payload.currency or "").upper()
-        if not payload_currency and payload.data:
-            payload_currency = (payload.data.get("currency") or "").upper()
+    payload_currency = (payload.currency or "").upper()
+    if not payload_currency and payload.data:
+        payload_currency = (payload.data.get("currency") or "").upper()
 
     if not payload_currency:
         logger.error("Webhook rejected: missing currency")
