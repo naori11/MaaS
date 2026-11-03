@@ -1,3 +1,6 @@
+import base64
+import binascii
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -5,11 +8,11 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StrictFloat, StrictInt
-from sqlalchemy import DateTime, Float, String, select
+from sqlalchemy import DateTime, Float, Index, String, and_, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -24,6 +27,7 @@ OperationType = Literal["addition", "subtraction", "multiplication", "division"]
 
 class LedgerEventIn(BaseModel):
     request_id: str
+    user_id: str
     operation_type: OperationType
     operand_a: StrictInt | StrictFloat
     operand_b: StrictInt | StrictFloat
@@ -49,6 +53,7 @@ class EnqueueResponse(BaseModel):
 
 class LedgerTransactionsResponse(BaseModel):
     items: list[LedgerRecord]
+    next_cursor: str | None
 
 
 class Base(DeclarativeBase):
@@ -57,8 +62,10 @@ class Base(DeclarativeBase):
 
 class LedgerRecordORM(Base):
     __tablename__ = "ledger_records"
+    __table_args__ = (Index("ix_ledger_records_user_created_id", "user_id", "created_at", "id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     request_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     operation_type: Mapped[str] = mapped_column(String(32), nullable=False)
     operand_a: Mapped[float] = mapped_column(Float, nullable=False)
@@ -118,6 +125,27 @@ def _to_api_record(row: LedgerRecordORM) -> LedgerRecord:
     )
 
 
+def _encode_cursor(row: LedgerRecordORM) -> str:
+    payload = json.dumps({"created_at": _to_iso_z(row.created_at), "id": row.id}).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str]:
+    try:
+        padded_cursor = cursor + "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(padded_cursor, altchars=b"-_", validate=True)
+        payload = json.loads(decoded)
+        if not isinstance(payload, dict):
+            raise TypeError("Cursor must contain an object")
+        created_at_raw = payload.get("created_at")
+        record_id = payload.get("id")
+        if not isinstance(created_at_raw, str) or not isinstance(record_id, str) or not record_id:
+            raise ValueError("Cursor is missing required fields")
+        return _parse_iso8601_utc(created_at_raw), record_id
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error, HTTPException) as exc:
+        raise HTTPException(status_code=400, detail="Malformed cursor") from exc
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _SESSION_FACTORY
@@ -128,6 +156,15 @@ async def lifespan(_: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all does not alter existing tables. Old mock rows remain NULL and
+        # are excluded from user-scoped history queries.
+        await conn.execute(text("ALTER TABLE ledger_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"))
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_ledger_records_user_created_id "
+                "ON ledger_records (user_id, created_at, id)"
+            )
+        )
 
     _SESSION_FACTORY = session_factory
 
@@ -154,6 +191,7 @@ async def enqueue_transaction(payload: LedgerEventIn) -> EnqueueResponse:
             session.add(
                 LedgerRecordORM(
                     request_id=payload.request_id,
+                    user_id=payload.user_id,
                     operation_type=payload.operation_type,
                     operand_a=float(payload.operand_a),
                     operand_b=float(payload.operand_b),
@@ -172,17 +210,32 @@ async def enqueue_transaction(payload: LedgerEventIn) -> EnqueueResponse:
 
 @app.get("/api/v1/ledger/transactions", response_model=LedgerTransactionsResponse)
 async def get_transactions(
+    user_id: str = Header(alias="X-User-Id"),
     limit: int = Query(default=LEDGER_DEFAULT_LIMIT, gt=0, le=LEDGER_MAX_LIMIT),
+    cursor: str | None = Query(default=None),
 ) -> LedgerTransactionsResponse:
     if _SESSION_FACTORY is None:
         raise HTTPException(status_code=500, detail="Ledger database unavailable")
 
+    statement = select(LedgerRecordORM).where(LedgerRecordORM.user_id == user_id)
+    if cursor is not None:
+        cursor_created_at, cursor_id = _decode_cursor(cursor)
+        statement = statement.where(
+            or_(
+                LedgerRecordORM.created_at < cursor_created_at,
+                and_(LedgerRecordORM.created_at == cursor_created_at, LedgerRecordORM.id < cursor_id),
+            )
+        )
+
     async with _SESSION_FACTORY() as session:
         result = await session.execute(
-            select(LedgerRecordORM)
-            .order_by(LedgerRecordORM.created_at.desc(), LedgerRecordORM.id.desc())
-            .limit(limit)
+            statement.order_by(LedgerRecordORM.created_at.desc(), LedgerRecordORM.id.desc()).limit(limit + 1)
         )
-        items = [_to_api_record(row) for row in result.scalars().all()]
+        rows = list(result.scalars().all())
 
-    return LedgerTransactionsResponse(items=items)
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    items = [_to_api_record(row) for row in page_rows]
+    next_cursor = _encode_cursor(page_rows[-1]) if has_more else None
+
+    return LedgerTransactionsResponse(items=items, next_cursor=next_cursor)

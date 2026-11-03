@@ -40,6 +40,7 @@ class RecordingSession:
 def _payload() -> dict[str, Any]:
     return {
         "request_id": "req-unit",
+        "user_id": "user-unit",
         "operation_type": "addition",
         "operand_a": 10,
         "operand_b": 5,
@@ -59,6 +60,7 @@ def test_ledger_confirms_only_after_database_commit(monkeypatch):
     assert response.json() == {"status": "created"}
     assert session.committed is True
     assert session.added[0].math_transaction_id == "txn-unit"
+    assert session.added[0].user_id == "user-unit"
 
 
 def test_ledger_returns_503_when_database_commit_fails(monkeypatch):

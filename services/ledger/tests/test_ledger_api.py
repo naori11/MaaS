@@ -63,6 +63,7 @@ def _valid_payload(request_id: str = "req-123", created_at: str = "2026-03-30T20
     unique_suffix = uuid4().hex
     return {
         "request_id": request_id,
+        "user_id": "user-123",
         "operation_type": "addition",
         "operand_a": 15,
         "operand_b": 27,
@@ -102,10 +103,18 @@ def test_enqueue_invalid_created_at_returns_400():
     assert response.json() == {"detail": "Malformed payload"}
 
 
-def _wait_for_transaction_ids(client: TestClient, transaction_ids: list[str], timeout_seconds: float = 3.0) -> None:
+def _wait_for_transaction_ids(
+    client: TestClient,
+    transaction_ids: list[str],
+    user_id: str = "user-123",
+    timeout_seconds: float = 3.0,
+) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        response = client.get("/api/v1/ledger/transactions?limit=100")
+        response = client.get(
+            "/api/v1/ledger/transactions?limit=100",
+            headers={"X-User-Id": user_id},
+        )
         if response.status_code == 200:
             seen_ids = {item["math_transaction_id"] for item in response.json()["items"]}
             if set(transaction_ids).issubset(seen_ids):
@@ -132,7 +141,10 @@ def test_get_transactions_returns_recent_records_with_limit():
                 payload_3["math_transaction_id"],
             ],
         )
-        response = client.get("/api/v1/ledger/transactions?limit=2")
+        response = client.get(
+            "/api/v1/ledger/transactions?limit=2",
+            headers={"X-User-Id": "user-123"},
+        )
 
     assert response.status_code == 200
     body = response.json()
@@ -140,6 +152,50 @@ def test_get_transactions_returns_recent_records_with_limit():
     transaction_ids_in_response = [item["math_transaction_id"] for item in body["items"]]
     assert payload_3["math_transaction_id"] in transaction_ids_in_response
     assert payload_2["math_transaction_id"] in transaction_ids_in_response
+    assert body["next_cursor"]
+
+
+def test_get_transactions_scopes_rows_to_user_and_paginates_by_cursor():
+    user_a_payloads = [
+        _valid_payload(f"req-a-{uuid4().hex}", f"2099-01-01T00:00:0{index}Z")
+        for index in range(1, 4)
+    ]
+    other_user_payload = _valid_payload("req-other-user", "2099-01-01T00:00:04Z")
+    other_user_payload["user_id"] = "user-456"
+
+    with TestClient(main.app) as client:
+        for payload in user_a_payloads + [other_user_payload]:
+            client.post("/api/v1/ledger/transactions", json=payload)
+
+        first_page = client.get(
+            "/api/v1/ledger/transactions?limit=2",
+            headers={"X-User-Id": "user-123"},
+        ).json()
+        second_page = client.get(
+            f"/api/v1/ledger/transactions?limit=2&cursor={first_page['next_cursor']}",
+            headers={"X-User-Id": "user-123"},
+        ).json()
+
+    first_ids = [item["math_transaction_id"] for item in first_page["items"]]
+    second_ids = [item["math_transaction_id"] for item in second_page["items"]]
+    expected_ids = {payload["math_transaction_id"] for payload in user_a_payloads}
+
+    assert len(first_ids) == 2
+    assert len(second_ids) == 1
+    assert set(first_ids + second_ids) == expected_ids
+    assert first_page["next_cursor"]
+    assert second_page["next_cursor"] is None
+
+
+def test_get_transactions_rejects_malformed_cursor():
+    with TestClient(main.app) as client:
+        response = client.get(
+            "/api/v1/ledger/transactions?cursor=not-a-cursor",
+            headers={"X-User-Id": "user-123"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Malformed cursor"}
 
 
 def test_unavailable_database_returns_503(monkeypatch):
