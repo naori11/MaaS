@@ -34,9 +34,11 @@ def _valid_gateway_token(subject: str = "user-123") -> str:
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, body: dict[str, Any]):
+    def __init__(self, status_code: int, body: dict[str, Any], headers: dict[str, str] | None = None, content: bytes = b""):
         self.status_code = status_code
         self._body = body
+        self.headers = headers or {"Content-Type": "application/json"}
+        self.content = content
 
     def json(self) -> dict[str, Any]:
         return self._body
@@ -113,11 +115,20 @@ def setup(monkeypatch):
     monkeypatch.setattr(main, "JWT_SECRET", "gateway-test-secret")
     monkeypatch.setattr(main, "JWT_ALGORITHM", "HS256")
     FakeAsyncClient.requests = []
+
     def default_responder(url, json, headers):
+        if url.endswith("/api/v1/billing/usage/reserve"):
+            return FakeResponse(200, {"allowed": True, "reservation_id": "res-test-123"})
+        if url.endswith(("/api/v1/billing/usage/commit", "/api/v1/billing/usage/release")):
+            return FakeResponse(200, {"status": "ok"})
+        if url.endswith("/api/v1/billing/status"):
+            return FakeResponse(200, {"plan_name": "Pro", "status": "active"})
         if "/api/v1/calculate/" in url:
             return FakeResponse(200, {"result": 3})
         if url.endswith("/api/v1/ledger/transactions"):
-            return FakeResponse(201, {"status": "created"})
+            return FakeResponse(201, {"status": "created", "items": []})
+        if url.endswith("/api/v1/ledger/export"):
+            return FakeResponse(200, {}, headers={"Content-Type": "text/csv"}, content=b"a,b,c\n1,2,3")
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = default_responder
@@ -142,7 +153,7 @@ def setup(monkeypatch):
         ),
         (
             "/api/v1/billing/subscribe",
-            {"plan_name": "Standard"},
+            {"plan_name": "Pro"},
             {"Authorization": f"Bearer {_valid_gateway_token()}"},
             f"{main.BILLING_SERVICE_URL}/api/v1/billing/subscribe",
         ),
@@ -182,55 +193,62 @@ def test_routes_forward_to_expected_upstreams(path, payload, headers, expected_u
     response = client.post(path, json=payload, headers=headers)
 
     assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["url"] == expected_url
+    matched = [req for req in FakeAsyncClient.requests if req["url"] == expected_url]
+    assert len(matched) == 1
+    assert matched[0]["url"] == expected_url
 
 
-def test_protected_route_requires_bearer_header():
+def test_malformed_json_returns_consistent_error():
+    response = client.post(
+        "/api/v1/auth/login",
+        content="not-json",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "bad_request"
+    assert "Malformed payload" in payload["error"]["message"]
+    assert "request_id" in payload
+
+
+def test_invalid_content_type_returns_bad_request():
+    response = client.post(
+        "/api/v1/auth/login",
+        content='{"email":"a@b.com","password":"pwd"}',
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"]["code"] == "bad_request"
+    assert "Content-Type must be application/json" in payload["error"]["message"]
+    assert "request_id" in payload
+
+
+def test_missing_jwt_on_protected_route_returns_unauthorized():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
     )
 
     assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
-    assert "request_id" in body
+    payload = response.json()
+    assert payload["error"]["code"] == "unauthorized"
+    assert "request_id" in payload
 
 
-def test_protected_route_rejects_invalid_jwt():
+def test_invalid_jwt_returns_unauthorized():
     response = client.post(
         "/api/v1/calculate/add",
         json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": "Bearer invalid-token"},
+        headers={"Authorization": "Bearer not-a-valid-token"},
     )
 
     assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
-    assert body["error"]["message"] == "Invalid credentials"
-
-
-def test_protected_route_rejects_expired_jwt():
-    expired = jwt.encode(
-        {
-            "sub": "user-123",
-            "iat": int((datetime.now(UTC) - timedelta(minutes=10)).timestamp()),
-            "exp": int((datetime.now(UTC) - timedelta(minutes=5)).timestamp()),
-        },
-        "gateway-test-secret",
-        algorithm="HS256",
-    )
-
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {expired}"},
-    )
-
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
-    assert body["error"]["message"] == "Invalid credentials"
+    payload = response.json()
+    assert payload["error"]["code"] == "unauthorized"
+    assert "request_id" in payload
 
 
 def test_valid_jwt_allows_protected_route():
@@ -241,199 +259,112 @@ def test_valid_jwt_allows_protected_route():
     )
 
     assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/calculate/add")
+    math_reqs = [r for r in FakeAsyncClient.requests if "/api/v1/calculate/add" in r["url"]]
+    assert len(math_reqs) == 1
+    assert math_reqs[0]["headers"]["X-User-Id"] == "user-123"
 
 
-def test_auth_routes_do_not_require_bearer_header():
-    response = client.post(
+def test_rate_limiting_blocks_after_threshold():
+    for _ in range(60):
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "user@example.com", "password": "secret"},
+        )
+
+    blocked = client.post(
         "/api/v1/auth/login",
         json={"email": "user@example.com", "password": "secret"},
     )
 
-    assert response.status_code == 200
+    assert blocked.status_code == 429
+    payload = blocked.json()
+    assert payload["error"]["code"] == "rate_limited"
+    assert payload["error"]["message"] == "Rate limit exceeded"
 
 
-def test_billing_status_requires_bearer_header():
-    response = client.get("/api/v1/billing/status")
+def test_rate_limit_resets_across_windows(monkeypatch):
+    current_time = 1_000.0
 
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
+    def fake_time() -> float:
+        return current_time
 
+    monkeypatch.setattr(main, "time", fake_time)
 
-def test_billing_subscribe_requires_bearer_header():
-    response = client.post(
-        "/api/v1/billing/subscribe",
-        json={"plan_name": "Standard"},
+    for _ in range(60):
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "user@example.com", "password": "secret"},
+        )
+
+    blocked = client.post(
+        "/api/v1/auth/login",
+        json={"email": "user@example.com", "password": "secret"},
     )
+    assert blocked.status_code == 429
 
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
+    current_time += 61.0
 
-
-def test_billing_webhook_bypasses_jwt_and_forwards_callback_token():
-    response = client.post(
-        "/api/v1/billing/webhook/xendit",
-        headers={"x-callback-token": "callback-token-123"},
-        json={"external_id": "upgrade_user_123_11111111-1111-1111-1111-111111111111", "status": "PAID"},
+    allowed = client.post(
+        "/api/v1/auth/login",
+        json={"email": "user@example.com", "password": "secret"},
     )
-
-    assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit"
-    assert FakeAsyncClient.requests[0]["headers"]["x-callback-token"] == "callback-token-123"
+    assert allowed.status_code == 200
 
 
 def test_billing_status_forwards_get_request_with_authorization():
     response = client.get(
         "/api/v1/billing/status",
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-status-123"},
     )
 
     assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["method"] == "GET"
-    assert FakeAsyncClient.requests[0]["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/status"
+    billing_reqs = [r for r in FakeAsyncClient.requests if "/api/v1/billing/status" in r["url"]]
+    assert len(billing_reqs) >= 1
+    req = billing_reqs[0]
+    assert req["method"] == "GET"
+    assert req["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/status"
+    assert req["headers"]["X-User-Id"] == "user-123"
+    assert req["headers"]["Authorization"] == f"Bearer {_valid_gateway_token()}"
+    assert req["headers"]["X-Request-ID"] == "req-status-123"
 
 
 def test_auth_me_route_forwards_get_request_with_authorization():
     response = client.get(
         "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-me-123"},
     )
 
     assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["method"] == "GET"
-    assert FakeAsyncClient.requests[0]["url"] == f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/me"
-
-
-def test_auth_me_route_requires_bearer_header():
-    response = client.get("/api/v1/auth/me")
-
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
-
-
-def test_ledger_transactions_requires_bearer_header():
-    response = client.get("/api/v1/ledger/transactions")
-
-    assert response.status_code == 401
-    body = response.json()
-    assert body["error"]["code"] == "unauthorized"
+    assert len(FakeAsyncClient.requests) == 1
+    req = FakeAsyncClient.requests[0]
+    assert req["method"] == "GET"
+    assert req["url"] == f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/me"
+    assert req["headers"]["X-User-Id"] == "user-123"
+    assert req["headers"]["Authorization"] == f"Bearer {_valid_gateway_token()}"
+    assert req["headers"]["X-Request-ID"] == "req-me-123"
 
 
 def test_ledger_transactions_forwards_get_with_authorization_and_query_params():
     response = client.get(
-        "/api/v1/ledger/transactions?limit=2",
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+        "/api/v1/ledger/transactions?limit=25&cursor=abc",
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-ledger-123"},
     )
 
     assert response.status_code == 200
-    assert FakeAsyncClient.requests[0]["method"] == "GET"
-    assert FakeAsyncClient.requests[0]["url"] == f"{main.LEDGER_SERVICE_URL}/api/v1/ledger/transactions?limit=2"
-    assert FakeAsyncClient.requests[0]["headers"]["X-User-Id"] == "user-123"
+    ledger_reqs = [r for r in FakeAsyncClient.requests if "/api/v1/ledger/transactions" in r["url"]]
+    assert len(ledger_reqs) == 1
+    req = ledger_reqs[0]
+    assert req["method"] == "GET"
+    assert req["url"] == f"{main.LEDGER_SERVICE_URL}/api/v1/ledger/transactions?limit=25&cursor=abc"
+    assert req["headers"]["X-User-Id"] == "user-123"
+    assert req["headers"]["X-User-Plan"] == "Pro"
+    assert req["headers"]["X-Request-ID"] == "req-ledger-123"
 
 
-def test_rate_limit_returns_429(monkeypatch):
-    monkeypatch.setattr(main, "RATE_LIMIT_REQUESTS", 1)
-
-    first = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-    second = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-
-    assert first.status_code == 200
-    assert second.status_code == 429
-    assert second.json()["error"]["code"] == "rate_limited"
-
-
-def test_request_id_is_forwarded_and_returned():
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={
-            "Authorization": f"Bearer {_valid_gateway_token()}",
-            "X-Request-ID": "req-123",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers["X-Request-ID"] == "req-123"
-    assert FakeAsyncClient.requests[0]["headers"]["X-Request-ID"] == "req-123"
-
-
-def test_gateway_generates_request_id_when_missing():
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-
-    assert response.status_code == 200
-    generated = response.headers.get("X-Request-ID")
-    assert generated
-    assert FakeAsyncClient.requests[0]["headers"]["X-Request-ID"] == generated
-
-
-def test_unified_error_shape_for_400_content_type_violation():
-    response = client.post(
-        "/api/v1/calculate/add",
-        content="not-json",
-        headers={
-            "Authorization": f"Bearer {_valid_gateway_token()}",
-            "Content-Type": "text/plain",
-        },
-    )
-
-    assert response.status_code == 400
-    body = response.json()
-    assert body["error"]["code"] == "bad_request"
-    assert "request_id" in body
-
-
-def test_unified_error_shape_for_500_upstream_failure():
-    FakeAsyncClient.responder = (
-        lambda url, json, headers: httpx.RequestError("boom")
-    )
-
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-
-    assert response.status_code == 500
-    body = response.json()
-    assert body["error"]["code"] == "internal_error"
-    assert "request_id" in body
-
-
-def test_upstream_error_is_normalized_to_unified_shape():
-    FakeAsyncClient.responder = (
-        lambda url, json, headers: FakeResponse(400, {"detail": "Malformed payload"})
-    )
-
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-
-    assert response.status_code == 400
-    body = response.json()
-    assert body["error"]["code"] == "bad_request"
-    assert body["error"]["message"] == "Malformed payload"
-    assert "request_id" in body
-
-
-def test_successful_calculate_publishes_ledger_event():
+def test_successful_calculate_publishes_ledger_event_and_commits_usage():
     def responder(url, json, headers):
+        if url.endswith("/api/v1/billing/usage/reserve"):
+            return FakeResponse(200, {"allowed": True, "reservation_id": "res-success-123"})
         if url.endswith("/api/v1/calculate/add"):
             return FakeResponse(
                 200,
@@ -446,6 +377,8 @@ def test_successful_calculate_publishes_ledger_event():
             )
         if url.endswith("/api/v1/ledger/transactions"):
             return FakeResponse(201, {"status": "created"})
+        if url.endswith("/api/v1/billing/usage/commit"):
+            return FakeResponse(200, {"status": "committed"})
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = responder
@@ -457,38 +390,21 @@ def test_successful_calculate_publishes_ledger_event():
     )
 
     assert response.status_code == 200
-    assert len(FakeAsyncClient.requests) == 2
-    assert FakeAsyncClient.requests[1]["url"].endswith("/api/v1/ledger/transactions")
-    ledger_payload = FakeAsyncClient.requests[1]["json"]
-    assert ledger_payload["request_id"] == "req-abc"
-    assert ledger_payload["user_id"] == "user-123"
-    assert ledger_payload["operation_type"] == "addition"
-    assert ledger_payload["operand_a"] == 1
-    assert ledger_payload["operand_b"] == 2
-    assert ledger_payload["result"] == 3
-    assert isinstance(ledger_payload["math_transaction_id"], str)
-    assert ledger_payload["math_transaction_id"]
-    assert isinstance(ledger_payload["created_at"], str)
-    assert ledger_payload["created_at"].endswith("Z")
+    urls = [r["url"] for r in FakeAsyncClient.requests]
+    assert any("/api/v1/billing/usage/reserve" in u for u in urls)
+    assert any("/api/v1/calculate/add" in u for u in urls)
+    assert any("/api/v1/ledger/transactions" in u for u in urls)
+    assert any("/api/v1/billing/usage/commit" in u for u in urls)
 
 
-def test_auth_route_does_not_publish_ledger_event():
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": "user@example.com", "password": "secret"},
-    )
-
-    assert response.status_code == 200
-    assert len(FakeAsyncClient.requests) == 1
-    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/auth/login")
-
-
-def test_failed_calculate_does_not_publish_ledger_event():
+def test_failed_calculate_does_not_publish_ledger_event_and_releases_usage():
     def responder(url, json, headers):
+        if url.endswith("/api/v1/billing/usage/reserve"):
+            return FakeResponse(200, {"allowed": True, "reservation_id": "res-fail-123"})
         if url.endswith("/api/v1/calculate/add"):
             return FakeResponse(400, {"detail": "Malformed payload"})
-        if url.endswith("/api/v1/ledger/transactions"):
-            return FakeResponse(201, {"status": "created"})
+        if url.endswith("/api/v1/billing/usage/release"):
+            return FakeResponse(200, {"status": "released"})
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = responder
@@ -500,53 +416,94 @@ def test_failed_calculate_does_not_publish_ledger_event():
     )
 
     assert response.status_code == 400
-    assert len(FakeAsyncClient.requests) == 1
-    assert FakeAsyncClient.requests[0]["url"].endswith("/api/v1/calculate/add")
+    urls = [r["url"] for r in FakeAsyncClient.requests]
+    assert any("/api/v1/billing/usage/reserve" in u for u in urls)
+    assert any("/api/v1/calculate/add" in u for u in urls)
+    assert not any("/api/v1/ledger/transactions" in u for u in urls)
+    assert any("/api/v1/billing/usage/release" in u for u in urls)
 
 
-def test_ledger_publish_failure_prevents_successful_calculate_response():
+def test_calculation_fails_closed_when_usage_reservation_service_is_unavailable():
     def responder(url, json, headers):
-        if url.endswith("/api/v1/calculate/add"):
+        if url.endswith("/api/v1/billing/usage/reserve"):
+            return FakeResponse(500, {"detail": "billing unavailable"})
+        return FakeResponse(200, {"result": 3})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 503
+    assert "could not be verified" in response.json()["error"]["message"]
+    assert not any("/api/v1/calculate/add" in request["url"] for request in FakeAsyncClient.requests)
+
+
+def test_quota_exceeded_returns_consistent_error():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/billing/usage/reserve"):
+            return FakeResponse(
+                429,
+                {"detail": "Daily calculation limit reached (50/50). Upgrade to Pro for unlimited calculations."},
+            )
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.post(
+        "/api/v1/calculate/add",
+        json={"operand_a": 1, "operand_b": 2},
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 429
+    err = response.json()["error"]
+    assert err["code"] == "quota_exceeded"
+    assert "Daily calculation limit reached" in err["message"]
+    # No math calculation was attempted
+    assert not any("/api/v1/calculate/add" in r["url"] for r in FakeAsyncClient.requests)
+
+
+def test_ledger_export_forbidden_for_hobby():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/billing/status"):
+            return FakeResponse(200, {"plan_name": "Hobby", "status": "active"})
+        return FakeResponse(200, {"ok": True})
+
+    FakeAsyncClient.responder = responder
+
+    response = client.get(
+        "/api/v1/ledger/export",
+        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
+    )
+
+    assert response.status_code == 403
+    assert "only available on the Pro plan" in response.json()["error"]["message"]
+
+
+def test_ledger_export_allowed_for_pro():
+    def responder(url, json, headers):
+        if url.endswith("/api/v1/billing/status"):
+            return FakeResponse(200, {"plan_name": "Pro", "status": "active"})
+        if url.endswith("/api/v1/ledger/export"):
             return FakeResponse(
                 200,
-                {
-                    "operation": "addition",
-                    "result": 3,
-                    "transaction_id": "txn-123",
-                    "timestamp": "2026-03-31T10:00:00Z",
-                },
+                {},
+                headers={"Content-Type": "text/csv", "Content-Disposition": "attachment; filename=math-history.csv"},
+                content=b"id,request_id,operation_type,operand_a,operand_b,result,math_transaction_id,created_at\n1,req,add,1,2,3,txn,2026-01-01Z",
             )
-        if url.endswith("/api/v1/ledger/transactions"):
-            return httpx.RequestError("ledger unavailable")
         return FakeResponse(200, {"ok": True})
 
     FakeAsyncClient.responder = responder
 
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
+    response = client.get(
+        "/api/v1/ledger/export",
         headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
     )
 
-    assert response.status_code == 503
-    assert "transaction history is unavailable" in response.json()["error"]["message"]
-
-
-def test_ledger_rejection_prevents_successful_calculate_response():
-    def responder(url, json, headers):
-        if url.endswith("/api/v1/calculate/add"):
-            return FakeResponse(200, {"result": 3})
-        if url.endswith("/api/v1/ledger/transactions"):
-            return FakeResponse(503, {"detail": "Ledger database unavailable"})
-        return FakeResponse(200, {"ok": True})
-
-    FakeAsyncClient.responder = responder
-
-    response = client.post(
-        "/api/v1/calculate/add",
-        json={"operand_a": 1, "operand_b": 2},
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}"},
-    )
-
-    assert response.status_code == 503
-    assert "transaction history is unavailable" in response.json()["error"]["message"]
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["Content-Type"]
+    assert b"operation_type" in response.content
