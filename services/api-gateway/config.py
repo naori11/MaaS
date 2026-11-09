@@ -15,3 +15,17 @@ LEDGER_SERVICE_URL = os.getenv("LEDGER_SERVICE_URL", "http://localhost:8021")
 LEDGER_PUBLISH_TIMEOUT_SECONDS = float(os.getenv("LEDGER_PUBLISH_TIMEOUT_SECONDS", "0.5"))
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+
+
+def get_cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOWED_ORIGINS")
+    if raw is not None and raw.strip():
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://localhost:3000",
+        "https://127.0.0.1:3000",
+        "https://localhost",
+        "https://127.0.0.1",
+    ]
