@@ -25,6 +25,7 @@ from config import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
+    CORS_ORIGINS,
     get_cors_origins,
 )
 
@@ -32,11 +33,24 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-origins = get_cors_origins()
+_DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://localhost:3000",
+    "https://127.0.0.1:3000",
+    "http://localhost",
+    "https://localhost",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+]
+
+_custom_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+origins = list(dict.fromkeys(_DEFAULT_ORIGINS + _custom_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)?ngrok(-free)?\.(app|dev)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -386,6 +400,11 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     if authorization:
         upstream_headers["Authorization"] = authorization
 
+    for h in ("origin", "referer", "x-forwarded-host", "x-forwarded-proto"):
+        val = request.headers.get(h)
+        if val:
+            upstream_headers[h] = val
+
     if request.url.path == "/api/v1/billing/webhook/xendit":
         callback_token = request.headers.get("x-callback-token")
         if callback_token:
@@ -476,6 +495,11 @@ async def _proxy_get(request: Request, upstream_url: str) -> Response:
     authorization = request.headers.get("Authorization")
     if authorization:
         upstream_headers["Authorization"] = authorization
+
+    for h in ("origin", "referer", "x-forwarded-host", "x-forwarded-proto"):
+        val = request.headers.get(h)
+        if val:
+            upstream_headers[h] = val
 
     # For ledger operations, resolve user plan from billing service
     if request.url.path in ("/api/v1/ledger/transactions", "/api/v1/ledger/export") and user_id is not None:
