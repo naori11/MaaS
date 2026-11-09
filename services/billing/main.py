@@ -178,6 +178,7 @@ class BillingStatusResponse(BaseModel):
 class SubscribeRequest(BaseModel):
     # Allow Pro, and accept Standard/Premium for legacy compatibility by mapping them to Pro
     plan_name: str = Field(pattern="^(Pro|Standard|Premium)$")
+    origin: str | None = None
 
 
 class SubscribeResponse(BaseModel):
@@ -324,7 +325,7 @@ async def _require_user_id(
     return _decode_user_id(authorization, x_user_id)
 
 
-def _create_xendit_payment_session(*, reference_id: str, amount: int, description: str) -> XenditPaymentSessionResult:
+def _create_xendit_payment_session(*, reference_id: str, amount: int, description: str, client_origin: str | None = None) -> XenditPaymentSessionResult:
     try:
         secret_key = get_xendit_secret_key()
     except RuntimeError as exc:
@@ -369,7 +370,7 @@ def _create_xendit_payment_session(*, reference_id: str, amount: int, descriptio
             },
         },
         "components_configuration": {
-            "origins": get_xendit_components_origins(),
+            "origins": get_xendit_components_origins(client_origin),
         },
     }
 
@@ -604,7 +605,26 @@ async def billing_status(user_id: str = Depends(_require_user_id)) -> BillingSta
 
 
 @app.post("/api/v1/billing/subscribe", response_model=SubscribeResponse)
-async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_require_user_id)) -> SubscribeResponse:
+async def billing_subscribe(
+    payload: SubscribeRequest,
+    user_id: str = Depends(_require_user_id),
+    origin: str | None = Header(default=None),
+    referer: str | None = Header(default=None),
+    x_forwarded_host: str | None = Header(default=None, alias="x-forwarded-host"),
+    x_forwarded_proto: str | None = Header(default=None, alias="x-forwarded-proto"),
+) -> SubscribeResponse:
+    caller_origin = payload.origin or origin
+    if not caller_origin and referer:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(referer)
+            if p.scheme and p.netloc:
+                caller_origin = f"{p.scheme}://{p.netloc}"
+        except Exception:
+            pass
+    if not caller_origin and x_forwarded_host:
+        proto = x_forwarded_proto or "https"
+        caller_origin = f"{proto}://{x_forwarded_host}"
     session_factory = _session_factory_or_500()
 
     # Map legacy names (Standard, Premium) to Pro
@@ -626,11 +646,21 @@ async def billing_subscribe(payload: SubscribeRequest, user_id: str = Depends(_r
             old_intent.status = INTENT_STATUS_SUPERSEDED
 
         reference_id = _to_reference_id(user_id)
-        payment_session = _create_xendit_payment_session(
-            reference_id=reference_id,
-            amount=amount,
-            description=f"{requested_plan} Plan Monthly Subscription",
-        )
+        session_kwargs: dict[str, Any] = {
+            "reference_id": reference_id,
+            "amount": amount,
+            "description": f"{requested_plan} Plan Monthly Subscription",
+        }
+        if caller_origin:
+            session_kwargs["client_origin"] = caller_origin
+        try:
+            payment_session = _create_xendit_payment_session(**session_kwargs)
+        except TypeError:
+            payment_session = _create_xendit_payment_session(
+                reference_id=reference_id,
+                amount=amount,
+                description=f"{requested_plan} Plan Monthly Subscription",
+            )
 
         session.add(
             InvoiceIntentORM(

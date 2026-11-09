@@ -40,25 +40,29 @@ def get_xendit_callback_token() -> str:
     return _require_env("XENDIT_CALLBACK_TOKEN")
 
 
-def get_xendit_components_origins() -> list[str]:
+def get_xendit_components_origins(extra_origin: str | None = None) -> list[str]:
     raw_origins = _optional_env("XENDIT_COMPONENTS_ORIGINS")
     if raw_origins is None:
-        return ["https://localhost", "https://localhost:3000"]
+        origins = ["https://localhost", "https://localhost:3000"]
+    else:
+        origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
+        if not origins:
+            origins = ["https://localhost", "https://localhost:3000"]
 
-    origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
-    if not origins:
-        return ["https://localhost", "https://localhost:3000"]
+    if extra_origin and extra_origin.strip():
+        cleaned = extra_origin.strip().rstrip("/")
+        if cleaned:
+            origins.append(cleaned)
 
     normalized_origins: list[str] = []
     for origin in origins:
-        if origin.startswith("https://"):
-            normalized_origins.append(origin)
-            continue
+        norm = origin
+        if norm.startswith("http://"):
+            norm = f"https://{norm[len('http://'):]}"
+        elif not norm.startswith("https://"):
+            norm = f"https://{norm}"
 
-        if origin.startswith("http://"):
-            normalized_origins.append(f"https://{origin[len('http://'):]}")
-            continue
-
-        normalized_origins.append(f"https://{origin}")
+        if norm not in normalized_origins:
+            normalized_origins.append(norm)
 
     return normalized_origins
