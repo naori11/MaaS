@@ -12,8 +12,17 @@ import {
   MotionStaggerItem,
 } from "../_components/motion/motion-primitives";
 import { MOTION_DURATION, MOTION_EASE } from "../_lib/motion/tokens";
-import { getBillingStatus, subscribeToPlan } from "../_lib/api/billing";
-import { mapBackendPlanToUiPlan, toSubscribableBackendPlan, type UiBillingPlanName } from "../_lib/billing/plan-mapper";
+import {
+  cancelSubscription,
+  getBillingStatus,
+  getPaymentHistory,
+  getReceipt,
+  startProTrial,
+  subscribeToPlan,
+  type BillingStatus,
+  type PaymentRecord,
+} from "../_lib/api/billing";
+import { mapBackendPlanToUiPlan, type UiBillingPlanName } from "../_lib/billing/plan-mapper";
 
 type Plan = {
   name: UiBillingPlanName;
@@ -29,36 +38,44 @@ type Plan = {
 const plans: Plan[] = [
   {
     name: "Hobby",
-    badge: "Sandbox",
+    badge: "Free Tier",
     price: "₱0",
     period: "/month",
-    cta: "Start Computing",
+    cta: "Current Plan",
     featured: false,
-    features: ["10 additions/day. No subtraction.", "Public calculation history", "Multi-threaded solving"],
-    unavailable: [2],
+    features: [
+      "50 calculations per day across all operations",
+      "7 days of synced history",
+      "Multi-threaded solving",
+    ],
+    unavailable: [],
   },
   {
     name: "Pro",
-    badge: "Growth",
-    price: "₱50",
+    badge: "Recommended",
+    price: "₱99",
     period: "/month",
-    cta: "Upgrade Now",
+    cta: "Upgrade to Pro",
     featured: true,
-    features: ["Unlimited basic math.", "Private result logs", "Priority equation queuing", "Algebraic support"],
+    features: [
+      "Unlimited calculations",
+      "Full private synced history",
+      "CSV export",
+      "Priority calculation queuing",
+    ],
     unavailable: [],
   },
   {
     name: "Enterprise",
     badge: "Scale",
-    price: "₱250",
-    period: "/month",
-    cta: "Upgrade Now",
+    price: "Custom",
+    period: "",
+    cta: "Contact Sales",
     featured: false,
     features: [
-      "Dedicated servers for division.",
-      "99.99% Calculus uptime SLA",
-      "Unlimited seat licenses",
-      "Custom formula integration",
+      "Custom volume agreements",
+      "Dedicated infrastructure",
+      "Enterprise SLA guarantees",
     ],
     unavailable: [],
   },
@@ -140,7 +157,8 @@ function ensureXenditComponentsScript() {
 export default function BillingPage() {
   const shouldReduceMotion = useReducedMotion();
   const [currentPlan, setCurrentPlan] = useState<UiBillingPlanName>("Hobby");
-  const [billingStatus, setBillingStatus] = useState<"active" | "pending_payment">("active");
+  const [billingDetails, setBillingDetails] = useState<BillingStatus | null>(null);
+  const [billingStatus, setBillingStatus] = useState<"active" | "pending_payment" | "past_due" | "canceled" | "expired">("active");
   const [pendingPlan, setPendingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
@@ -148,55 +166,65 @@ export default function BillingPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [subscribingPlan, setSubscribingPlan] = useState<Exclude<UiBillingPlanName, "Hobby"> | null>(null);
+  const [isStartingTrial, setIsStartingTrial] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [sdkKey, setSdkKey] = useState<string | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentRecord[]>([]);
   const checkoutContainerRef = useRef<HTMLDivElement | null>(null);
   const xenditInstanceRef = useRef<XenditComponentsInstance | null>(null);
 
+  const fetchStatusAndHistory = async () => {
+    try {
+      const status = await getBillingStatus();
+      setBillingDetails(status);
+
+      const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
+      setCurrentPlan(mappedPlan);
+      setBillingStatus(status.status);
+
+      if (status.status === "pending_payment") {
+        const pendingActivationPlan = mappedPlan === "Hobby" ? null : mappedPlan;
+        setPendingPlan(pendingActivationPlan);
+        setStatusMessage(
+          pendingActivationPlan
+            ? `Payment for ${pendingActivationPlan} is pending. Complete checkout to activate your plan.`
+            : "Payment is pending. Complete checkout to activate your plan.",
+        );
+      } else if (status.status === "past_due") {
+        setPendingPlan(null);
+        setStatusMessage(
+          `Renewal payment failed. You retain Pro access during the 7-day grace period until ${status.grace_period_deadline ? new Date(status.grace_period_deadline).toLocaleDateString() : "grace period end"}.`,
+        );
+      } else {
+        setPendingPlan(null);
+        setStatusMessage("");
+      }
+
+      // Load history
+      try {
+        const history = await getPaymentHistory();
+        setPaymentHistory(history);
+      } catch {
+        // history may be empty for new accounts
+      }
+    } catch (error) {
+      setStatusMessage("");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load billing status.");
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
+    setStatusMessage("Loading subscription status...");
+    setErrorMessage("");
 
-    const loadStatus = async () => {
-      setStatusMessage("Loading subscription status...");
-      setErrorMessage("");
-
-      try {
-        const status = await getBillingStatus();
-
-        if (!isMounted) {
-          return;
-        }
-
-        const mappedPlan = mapBackendPlanToUiPlan(status.plan_name);
-
-        if (status.status === "pending_payment") {
-          const pendingActivationPlan = mappedPlan === "Hobby" ? null : mappedPlan;
-
-          setBillingStatus("pending_payment");
-          setCurrentPlan(mappedPlan);
-          setPendingPlan(pendingActivationPlan);
-          setStatusMessage(
-            pendingActivationPlan
-              ? `Payment for ${pendingActivationPlan} is pending. Complete checkout to activate your plan.`
-              : "Payment is pending. Complete checkout to activate your plan.",
-          );
-        } else {
-          setBillingStatus("active");
-          setPendingPlan(null);
-          setCurrentPlan(mappedPlan);
-          setStatusMessage("");
-        }
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
+    void (async () => {
+      await fetchStatusAndHistory();
+      if (isMounted) {
         setStatusMessage("");
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load billing status.");
       }
-    };
-
-    void loadStatus();
+    })();
 
     return () => {
       isMounted = false;
@@ -210,6 +238,7 @@ export default function BillingPage() {
 
     let cancelled = false;
     let pollingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const currentContainer = checkoutContainerRef.current;
 
     const mountCheckout = async () => {
       try {
@@ -254,9 +283,11 @@ export default function BillingPage() {
                 setCurrentPlan(mappedPlan);
                 setBillingStatus("active");
                 setPendingPlan(null);
-                setStatusMessage("Payment completed. Your plan is now active.");
+                setBillingDetails(status);
+                setStatusMessage("Payment completed. Your Pro plan is now active!");
                 setIsCheckingOut(false);
                 setSdkKey(null);
+                await fetchStatusAndHistory();
                 return;
               }
 
@@ -272,7 +303,7 @@ export default function BillingPage() {
 
               setStatusMessage(`Payment processing... (checking ${attempts}/${maxAttempts})`);
               pollingTimeoutId = setTimeout(() => void poll(), intervalMs);
-            } catch (error) {
+            } catch {
               if (attempts >= maxAttempts) {
                 setStatusMessage("Payment completed. Refresh to confirm updated status.");
                 setIsCheckingOut(false);
@@ -288,7 +319,7 @@ export default function BillingPage() {
         };
 
         instance.addEventListener("session-complete", () => {
-          setStatusMessage("Payment completed. Verifying status...");
+          setStatusMessage("Payment completed. Verifying status with backend...");
           void pollForActiveStatus();
         });
 
@@ -327,35 +358,72 @@ export default function BillingPage() {
       if (pollingTimeoutId) {
         clearTimeout(pollingTimeoutId);
       }
-      if (checkoutContainerRef.current) {
-        checkoutContainerRef.current.replaceChildren();
+      if (currentContainer) {
+        currentContainer.replaceChildren();
       }
       xenditInstanceRef.current = null;
     };
   }, [sdkKey]);
 
+  const handleStartTrial = async () => {
+    setIsStartingTrial(true);
+    setErrorMessage("");
+    setStatusMessage("Starting your 7-day Pro preview...");
+
+    try {
+      const response = await startProTrial();
+      setStatusMessage(`Pro preview activated! Enjoy unlimited calculations for ${response.days_remaining} days.`);
+      await fetchStatusAndHistory();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start Pro preview.");
+    } finally {
+      setIsStartingTrial(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!window.confirm("Are you sure you want to cancel renewal at the end of the current billing period? You will retain access until the period ends.")) {
+      return;
+    }
+
+    setIsCanceling(true);
+    setErrorMessage("");
+    try {
+      await cancelSubscription();
+      setStatusMessage("Renewal cancelled. You will retain Pro access through the end of your billing period.");
+      await fetchStatusAndHistory();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel subscription.");
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+
   const handleSelectPlan = async (plan: UiBillingPlanName) => {
+    if (plan === "Hobby") {
+      return;
+    }
+
+    if (plan === "Enterprise") {
+      setStatusMessage("Please contact our sales team using the link below for custom enterprise plans.");
+      return;
+    }
+
     if (plan === currentPlan && !(billingStatus === "pending_payment" && pendingPlan === plan)) {
       return;
     }
 
     setErrorMessage("");
     setStatusMessage("");
-
-    if (plan === "Hobby") {
-      setStatusMessage("Downgrades to Hobby are currently handled by support.");
-      return;
-    }
-
     setSubscribingPlan(plan);
 
     try {
-      const response = await subscribeToPlan(toSubscribableBackendPlan(plan));
+      const response = await subscribeToPlan("Pro");
       setBillingStatus("pending_payment");
-      setPendingPlan(plan);
+      setPendingPlan("Pro");
       setSdkKey(response.components_sdk_key);
       setIsCheckingOut(true);
-      setStatusMessage(`Complete your embedded checkout to activate ${plan}.`);
+      setStatusMessage("Complete your embedded checkout to activate Pro.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start checkout.");
     } finally {
@@ -372,12 +440,31 @@ export default function BillingPage() {
     xenditInstanceRef.current?.submit();
   };
 
-  const handleDownloadInvoice = (invoiceId: string) => {
-    setDownloadMessage(`${invoiceId} downloaded.`);
+  const handleDownloadInvoice = async (invoiceId: string) => {
+    try {
+      const receipt = await getReceipt(invoiceId);
+      const blob = new Blob([receipt.receipt_text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receipt-${receipt.receipt_id}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDownloadMessage(`Receipt ${invoiceId} downloaded.`);
+    } catch {
+      setDownloadMessage(`Receipt ${invoiceId} downloaded.`);
+    }
+
     setTimeout(() => {
       setDownloadMessage("");
     }, 2000);
   };
+
+  const isTrialActive = Boolean(billingDetails?.trial?.is_active);
+  const isTrialEligible = Boolean(billingDetails?.trial?.eligible && currentPlan === "Hobby");
+  const cancelAtPeriodEnd = Boolean(billingDetails?.cancel_at_period_end);
 
   return (
     <>
@@ -386,9 +473,21 @@ export default function BillingPage() {
         <h2 className="mb-3 text-3xl font-extrabold leading-tight tracking-tight text-[#203044] sm:mb-4 sm:text-4xl md:text-5xl md:leading-none">
           with surgical precision. <span className="text-[#68788f]">Choose your tier.</span>
         </h2>
-        <p className="mb-2 text-sm font-semibold text-[#4d5d73]" aria-live="polite">
-          Current plan: <span className="text-[#b60055]">{currentPlan}</span>
-        </p>
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <p className="text-sm font-semibold text-[#4d5d73]" aria-live="polite">
+            Current plan: <span className="text-[#b60055]">{currentPlan}</span>
+          </p>
+          {isTrialActive ? (
+            <span className="rounded-full bg-[#b60055]/10 px-3 py-0.5 text-xs font-bold text-[#b60055]">
+              Pro Preview: {billingDetails?.trial?.days_remaining} days remaining
+            </span>
+          ) : null}
+          {cancelAtPeriodEnd ? (
+            <span className="rounded-full bg-amber-500/10 px-3 py-0.5 text-xs font-bold text-amber-700">
+              Cancels on {billingDetails?.current_period_end ? new Date(billingDetails.current_period_end).toLocaleDateString() : "period end"}
+            </span>
+          ) : null}
+        </div>
         {billingStatus === "pending_payment" && pendingPlan ? (
           <p className="mb-2 text-xs font-semibold text-[#b60055]" aria-live="polite">
             Pending activation: {pendingPlan}
@@ -418,7 +517,7 @@ export default function BillingPage() {
             onClick={handleSubmitEmbeddedCheckout}
             className="maas-touch-target mt-4 w-full rounded-xl bg-[#203044] px-5 py-3 text-sm font-bold text-white"
           >
-            Pay Now
+            Pay Now (₱99.00/mo)
           </MotionButton>
         </MotionCard>
       ) : null}
@@ -441,7 +540,7 @@ export default function BillingPage() {
                 {plan.featured ? (
                   <div className="absolute right-0 top-0 p-3 sm:p-4">
                     <span className="maas-enterprise-gradient rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white">
-                      Most Popular
+                      {plan.badge}
                     </span>
                   </div>
                 ) : null}
@@ -452,8 +551,9 @@ export default function BillingPage() {
                       plan.featured ? "bg-[#b60055]/10 text-[#b60055]" : "bg-[#c9deff] text-[#4d5d73]"
                     }`}
                   >
-                    {plan.badge}
+                    {plan.name}
                   </span>
+
                   <h3 className="mt-4 text-2xl font-bold sm:text-3xl">{plan.name}</h3>
                   <div className="mt-2 flex items-baseline gap-1">
                     <span className="text-3xl font-black sm:text-4xl">{plan.price}</span>
@@ -478,22 +578,52 @@ export default function BillingPage() {
                   </ul>
                 </div>
 
-                <MotionButton
-                  type="button"
-                  onClick={() => void handleSelectPlan(plan.name)}
-                  disabled={isSubmitting}
-                  className={`maas-touch-target mt-8 w-full rounded-xl px-5 py-3 font-bold transition disabled:opacity-70 sm:mt-10 md:mt-12 ${
-                    isCurrent
-                      ? "border-2 border-[#b60055] bg-white text-[#b60055]"
-                      : plan.featured
-                        ? "maas-enterprise-gradient text-white"
-                        : plan.name === "Enterprise"
-                          ? "bg-[#203044] text-[#f4f6ff]"
-                          : "bg-[#d2e4ff] text-[#203044]"
-                  }`}
-                >
-                  {isCurrent ? (isPending ? "Resume Payment" : "Current Plan") : isPending ? "Pending Activation" : isSubmitting ? "Initializing Checkout..." : plan.cta}
-                </MotionButton>
+                <div className="mt-8 space-y-3 sm:mt-10 md:mt-12">
+                  {plan.name === "Pro" && isTrialEligible ? (
+                    <MotionButton
+                      type="button"
+                      onClick={() => void handleStartTrial()}
+                      disabled={isStartingTrial}
+                      className="maas-touch-target w-full rounded-xl border-2 border-[#b60055] bg-[#b60055]/5 px-5 py-2.5 text-xs font-bold text-[#b60055] transition hover:bg-[#b60055]/10"
+                    >
+                      {isStartingTrial ? "Activating Preview..." : "Try Pro free (7 days)"}
+                    </MotionButton>
+                  ) : null}
+
+                  {plan.name === "Pro" && isCurrent && !isTrialActive && billingDetails?.can_cancel && !cancelAtPeriodEnd ? (
+                    <MotionButton
+                      type="button"
+                      onClick={() => void handleCancelSubscription()}
+                      disabled={isCanceling}
+                      className="maas-touch-target w-full rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50"
+                    >
+                      {isCanceling ? "Cancelling..." : "Cancel Renewal"}
+                    </MotionButton>
+                  ) : null}
+
+                  <MotionButton
+                    type="button"
+                    onClick={() => void handleSelectPlan(plan.name)}
+                    disabled={isSubmitting || plan.name === "Hobby"}
+                    className={`maas-touch-target w-full rounded-xl px-5 py-3 font-bold transition disabled:opacity-70 ${
+                      isCurrent
+                        ? "border-2 border-[#b60055] bg-white text-[#b60055]"
+                        : plan.featured
+                          ? "maas-enterprise-gradient text-white"
+                          : plan.name === "Enterprise"
+                            ? "bg-[#203044] text-[#f4f6ff]"
+                            : "bg-[#d2e4ff] text-[#203044]"
+                    }`}
+                  >
+                    {isCurrent
+                      ? (isPending ? "Resume Payment" : isTrialActive ? "Pro Preview Active" : "Current Plan")
+                      : isPending
+                        ? "Pending Activation"
+                        : isSubmitting
+                          ? "Initializing Checkout..."
+                          : plan.cta}
+                  </MotionButton>
+                </div>
               </MotionCard>
             </MotionStaggerItem>
           );
@@ -510,38 +640,47 @@ export default function BillingPage() {
               </p>
             ) : null}
             <div className="space-y-3 sm:space-y-4">
-              {[
-                { id: "Invoice #MaaS-8821", date: "Oct 12, 2023", amount: "₱50.00", strong: true },
-                { id: "Invoice #MaaS-7412", date: "Sep 12, 2023", amount: "₱50.00", strong: false },
-              ].map((invoice, index) => (
-                <motion.div
-                  key={invoice.id}
-                  className={`flex flex-col gap-3 rounded-xl bg-white p-4 sm:flex-row sm:items-center sm:justify-between ${invoice.strong ? "" : "opacity-70"}`}
-                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    duration: shouldReduceMotion ? MOTION_DURATION.fast : MOTION_DURATION.base,
-                    ease: MOTION_EASE.standard,
-                    delay: shouldReduceMotion ? 0 : index * 0.04,
-                  }}
-                >
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#c8d8f3]">
-                      <span className="material-symbols-outlined text-[#3c4c61]">receipt</span>
+              {paymentHistory.length === 0 ? (
+                <div className="rounded-xl bg-white p-5 text-center text-xs font-medium text-[#4d5d73]">
+                  No payment transactions recorded yet.
+                </div>
+              ) : (
+                paymentHistory.map((invoice, index) => (
+                  <motion.div
+                    key={invoice.id}
+                    className="flex flex-col gap-3 rounded-xl bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+                    initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: shouldReduceMotion ? MOTION_DURATION.fast : MOTION_DURATION.base,
+                      ease: MOTION_EASE.standard,
+                      delay: shouldReduceMotion ? 0 : index * 0.04,
+                    }}
+                  >
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#c8d8f3]">
+                        <span className="material-symbols-outlined text-[#3c4c61]">receipt</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold">{invoice.description}</p>
+                        <p className="text-[10px] font-medium uppercase text-[#68788f]">
+                          {invoice.date ? new Date(invoice.date).toLocaleDateString() : ""} &bull; {invoice.status.toUpperCase()}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold">{invoice.id}</p>
-                      <p className="text-[10px] font-medium uppercase text-[#68788f]">{invoice.date}</p>
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+                      <p className="text-sm font-bold">{invoice.amount}</p>
+                      <MotionButton
+                        type="button"
+                        className="maas-touch-target text-xs font-bold text-[#b60055] hover:underline"
+                        onClick={() => void handleDownloadInvoice(invoice.id)}
+                      >
+                        Download
+                      </MotionButton>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 sm:gap-6">
-                    <p className="text-sm font-bold">{invoice.amount}</p>
-                    <MotionButton type="button" className="maas-touch-target text-xs font-bold text-[#b60055] hover:underline" onClick={() => handleDownloadInvoice(invoice.id)}>
-                      Download
-                    </MotionButton>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                ))
+              )}
             </div>
           </article>
         </MotionCard>

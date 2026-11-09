@@ -6,6 +6,10 @@ import BillingPage from "./page";
 vi.mock("../_lib/api/billing", () => ({
   getBillingStatus: vi.fn(),
   subscribeToPlan: vi.fn(),
+  startProTrial: vi.fn(),
+  cancelSubscription: vi.fn(),
+  getPaymentHistory: vi.fn(),
+  getReceipt: vi.fn(),
 }));
 
 const billingApi = await import("../_lib/api/billing");
@@ -13,13 +17,18 @@ const billingApi = await import("../_lib/api/billing");
 describe("Billing page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(billingApi.getPaymentHistory).mockResolvedValue([]);
   });
 
-  it("loads and renders current plan from billing status", async () => {
+  it("loads and renders current plan and v1 pricing catalog", async () => {
     vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
-      plan_name: "Standard",
+      plan_name: "Pro",
       status: "active",
       expires_at: null,
+      current_period_end: "2026-12-01T00:00:00Z",
+      trial: { eligible: false, is_active: false, days_remaining: null, expires_at: null },
+      usage: { used: 12, limit: null, unlimited: true, next_reset_at: "2026-11-05T00:00:00Z" },
+      can_cancel: true,
     });
 
     render(<BillingPage />);
@@ -31,15 +40,17 @@ describe("Billing page", () => {
     });
 
     expect(screen.getByText("₱0")).toBeInTheDocument();
-    expect(screen.getByText("₱50")).toBeInTheDocument();
-    expect(screen.getByText("₱250")).toBeInTheDocument();
+    expect(screen.getByText("₱99")).toBeInTheDocument();
+    expect(screen.getByText("Custom")).toBeInTheDocument();
   });
 
-  it("starts embedded checkout and keeps plan pending activation", async () => {
+  it("starts embedded checkout for Pro and keeps status pending activation", async () => {
     vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
-      plan_name: "Free",
+      plan_name: "Hobby",
       status: "active",
       expires_at: null,
+      trial: { eligible: true, is_active: false, days_remaining: null, expires_at: null },
+      usage: { used: 5, limit: 50, unlimited: false, next_reset_at: "2026-11-05T00:00:00Z" },
     });
     vi.mocked(billingApi.subscribeToPlan).mockResolvedValue({
       components_sdk_key: "xnd_public_test_components_sdk_key",
@@ -67,11 +78,11 @@ describe("Billing page", () => {
       expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Hobby");
     });
 
-    const [proUpgradeButton] = screen.getAllByRole("button", { name: "Upgrade Now" });
+    const proUpgradeButton = screen.getByRole("button", { name: "Upgrade to Pro" });
     fireEvent.click(proUpgradeButton);
 
     await waitFor(() => {
-      expect(billingApi.subscribeToPlan).toHaveBeenCalledWith("Standard");
+      expect(billingApi.subscribeToPlan).toHaveBeenCalledWith("Pro");
     });
 
     await waitFor(() => {
@@ -85,26 +96,36 @@ describe("Billing page", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Complete your embedded checkout to activate Pro.");
   });
 
-  it("shows pending payment status from backend", async () => {
+  it("starts 7-day Pro preview when Try Pro free is selected", async () => {
     vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
-      plan_name: "Premium",
-      status: "pending_payment",
+      plan_name: "Hobby",
+      status: "active",
       expires_at: null,
+      trial: { eligible: true, is_active: false, days_remaining: null, expires_at: null },
+      usage: { used: 0, limit: 50, unlimited: false, next_reset_at: "2026-11-05T00:00:00Z" },
+    });
+    vi.mocked(billingApi.startProTrial).mockResolvedValue({
+      status: "active",
+      expires_at: "2026-11-11T00:00:00Z",
+      days_remaining: 7,
     });
 
     render(<BillingPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Enterprise");
+      expect(screen.getByRole("button", { name: /Try Pro free/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Pending activation: Enterprise/i)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Payment for Enterprise is pending. Complete checkout to activate your plan.");
+    fireEvent.click(screen.getByRole("button", { name: /Try Pro free/i }));
+
+    await waitFor(() => {
+      expect(billingApi.startProTrial).toHaveBeenCalled();
+    });
   });
 
-  it("resumes pending payment for current pending plan", async () => {
+  it("shows pending payment status from backend and allows resuming", async () => {
     vi.mocked(billingApi.getBillingStatus).mockResolvedValue({
-      plan_name: "Standard",
+      plan_name: "Pro",
       status: "pending_payment",
       expires_at: null,
     });
@@ -129,11 +150,17 @@ describe("Billing page", () => {
 
     render(<BillingPage />);
 
+    await waitFor(() => {
+      expect(screen.getByText(/Current plan:/i)).toHaveTextContent("Pro");
+    });
+
+    expect(screen.getByText(/Pending activation: Pro/i)).toBeInTheDocument();
+
     const resumeButton = await screen.findByRole("button", { name: "Resume Payment" });
     fireEvent.click(resumeButton);
 
     await waitFor(() => {
-      expect(billingApi.subscribeToPlan).toHaveBeenCalledWith("Standard");
+      expect(billingApi.subscribeToPlan).toHaveBeenCalledWith("Pro");
     });
 
     await waitFor(() => {
