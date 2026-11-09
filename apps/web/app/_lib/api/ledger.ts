@@ -1,7 +1,8 @@
 import { getAuthTokenFromBrowserSession } from "../auth/session";
 import { handleUnauthorized } from "./client";
 
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
+import { getGatewayBaseUrl } from "./gateway-url";
+const GATEWAY_BASE_URL = getGatewayBaseUrl();
 const LEDGER_TRANSACTIONS_PATH = "/api/v1/ledger/transactions";
 
 export type LedgerTransaction = {
@@ -28,7 +29,7 @@ export async function fetchLedgerTransactions(limit = 10, cursor?: string | null
   const authorization = token ? `Bearer ${token}` : null;
   const headers = authorization ? { Authorization: authorization } : undefined;
 
-  const response = await fetch(`${GATEWAY_BASE_URL}${LEDGER_TRANSACTIONS_PATH}?${params.toString()}`, {
+  const response = await fetch(`${getGatewayBaseUrl()}${LEDGER_TRANSACTIONS_PATH}?${params.toString()}`, {
     method: "GET",
     credentials: "include",
     headers,

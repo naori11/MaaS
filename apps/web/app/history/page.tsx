@@ -13,7 +13,8 @@ import { getAuthTokenFromBrowserSession } from "../_lib/auth/session";
 type FilterMode = "all" | "success" | "errors";
 
 const PAGE_SIZE = 10;
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
+import { getGatewayBaseUrl } from "../_lib/api/gateway-url";
+const GATEWAY_BASE_URL = getGatewayBaseUrl();
 
 export default function HistoryPage() {
   const shouldReduceMotion = useReducedMotion();
@@ -89,7 +90,7 @@ export default function HistoryPage() {
     try {
       const token = getAuthTokenFromBrowserSession();
       try {
-        const res = await fetch(`${GATEWAY_BASE_URL}/api/v1/ledger/export`, {
+        const res = await fetch(`${getGatewayBaseUrl()}/api/v1/ledger/export`, {
           method: "GET",
           credentials: "include",
           headers: {

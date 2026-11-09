@@ -2,7 +2,8 @@ import type { BackendBillingPlanName, BackendSubscribablePlanName } from "../bil
 import { getAuthTokenFromBrowserSession } from "../auth/session";
 import { handleUnauthorized } from "./client";
 
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
+import { getGatewayBaseUrl } from "./gateway-url";
+const GATEWAY_BASE_URL = getGatewayBaseUrl();
 
 export type TrialInfo = {
   eligible: boolean;
@@ -76,7 +77,7 @@ async function billingRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const target = path.startsWith("/") ? path : `/${path}`;
   const authorization = getAuthorizationHeaderValue();
 
-  const response = await fetch(`${GATEWAY_BASE_URL}${target}`, {
+  const response = await fetch(`${getGatewayBaseUrl()}${target}`, {
     credentials: "include",
     cache: "no-store",
     ...init,
@@ -114,10 +115,12 @@ export function getBillingStatus() {
 }
 
 export function subscribeToPlan(planName: BackendSubscribablePlanName) {
+  const origin = typeof window !== "undefined" ? window.location.origin : undefined;
   return billingRequest<SubscribeResponse>("/api/v1/billing/subscribe", {
     method: "POST",
     body: JSON.stringify({
       plan_name: planName,
+      ...(origin ? { origin } : {}),
     }),
   });
 }
