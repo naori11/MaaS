@@ -9,7 +9,8 @@ const endpointByOperator: Record<CalculatorOperator, string> = {
   "÷": "/api/v1/calculate/divide",
 };
 
-const gatewayBaseUrl = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
+import { getGatewayBaseUrl } from "./gateway-url";
+const gatewayBaseUrl = getGatewayBaseUrl();
 
 interface GatewayMathResponse {
   operation: "addition" | "subtraction" | "multiplication" | "division";
@@ -46,7 +47,7 @@ export const calculateGatewayOperation = async (
   operandA: number,
   operandB: number,
 ): Promise<GatewayMathResponse> => {
-  const endpoint = `${gatewayBaseUrl}${endpointByOperator[operator]}`;
+  const endpoint = `${getGatewayBaseUrl()}${endpointByOperator[operator]}`;
   const token = getAuthTokenFromBrowserSession();
 
   if (!token) {

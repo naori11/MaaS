@@ -6,13 +6,14 @@ from time import time
 
 import httpx
 import jwt
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
 
 from config import (
     BILLING_SERVICE_URL,
+    CORS_ORIGINS,
     IDENTITY_SERVICE_URL,
     JWT_ALGORITHM,
     JWT_SECRET,
@@ -25,18 +26,30 @@ from config import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
-    get_cors_origins,
 )
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-origins = get_cors_origins()
+_DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://localhost:3000",
+    "https://127.0.0.1:3000",
+    "http://localhost",
+    "https://localhost",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+]
+
+_custom_origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
+origins = list(dict.fromkeys(_DEFAULT_ORIGINS + _custom_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)?ngrok(-free)?\.(app|dev)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,19 +62,27 @@ _ROUTE_MAP = {
     "/api/v1/auth/me": f"{IDENTITY_SERVICE_URL}/api/v1/auth/me",
     "/api/v1/billing/status": f"{BILLING_SERVICE_URL}/api/v1/billing/status",
     "/api/v1/billing/subscribe": f"{BILLING_SERVICE_URL}/api/v1/billing/subscribe",
+    "/api/v1/billing/cancel": f"{BILLING_SERVICE_URL}/api/v1/billing/cancel",
+    "/api/v1/billing/history": f"{BILLING_SERVICE_URL}/api/v1/billing/history",
+    "/api/v1/billing/trial/start": f"{BILLING_SERVICE_URL}/api/v1/billing/trial/start",
+    "/api/v1/billing/usage": f"{BILLING_SERVICE_URL}/api/v1/billing/usage",
     "/api/v1/billing/webhook/xendit": f"{BILLING_SERVICE_URL}/api/v1/billing/webhook/xendit",
     "/api/v1/calculate/add": f"{MATH_ADD_SERVICE_URL}/api/v1/calculate/add",
     "/api/v1/calculate/subtract": f"{MATH_SUBTRACT_SERVICE_URL}/api/v1/calculate/subtract",
     "/api/v1/calculate/multiply": f"{MATH_MULTIPLY_SERVICE_URL}/api/v1/calculate/multiply",
     "/api/v1/calculate/divide": f"{MATH_DIVIDE_SERVICE_URL}/api/v1/calculate/divide",
     "/api/v1/ledger/transactions": f"{LEDGER_SERVICE_URL}/api/v1/ledger/transactions",
+    "/api/v1/ledger/export": f"{LEDGER_SERVICE_URL}/api/v1/ledger/export",
 }
 
 _STATUS_CODE_TO_ERROR_CODE = {
     400: "bad_request",
     401: "unauthorized",
+    403: "forbidden",
     429: "rate_limited",
     500: "internal_error",
+    502: "bad_gateway",
+    503: "service_unavailable",
 }
 
 _RATE_LIMIT_BUCKET: dict[str, int] = {}
@@ -73,9 +94,16 @@ def _request_id(request: Request) -> str:
 
 
 def _error_payload(status_code: int, message: str, request_id: str) -> dict:
+    code = _STATUS_CODE_TO_ERROR_CODE.get(status_code, "internal_error")
+    if status_code == 429:
+        if "daily" in message.lower() or "limit reached" in message.lower() or "quota" in message.lower():
+            code = "quota_exceeded"
+        else:
+            code = "rate_limited"
+
     return {
         "error": {
-            "code": _STATUS_CODE_TO_ERROR_CODE.get(status_code, "internal_error"),
+            "code": code,
             "message": message,
         },
         "request_id": request_id,
@@ -92,11 +120,12 @@ _JWT_BYPASS_ROUTES = {
 def _requires_jwt(method: str, path: str) -> bool:
     route = (method.upper(), path)
 
-    # Explicitly allowlisted routes do NOT require JWT
     if route in _JWT_BYPASS_ROUTES:
         return False
 
-    # For all known routes in the gateway, require JWT by default
+    if path.startswith("/api/v1/billing/receipts/"):
+        return True
+
     return path in _ROUTE_MAP
 
 
@@ -212,6 +241,105 @@ async def _publish_ledger_event(event: dict, request_id: str) -> None:
         ) from exc
 
 
+async def _reserve_usage(user_id: str, authorization: str | None, request_id: str) -> str | None:
+    timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Request-ID": request_id,
+        "X-User-Id": user_id,
+    }
+    if authorization:
+        headers["Authorization"] = authorization
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{BILLING_SERVICE_URL}/api/v1/billing/usage/reserve",
+                json={},
+                headers=headers,
+            )
+            if resp.status_code == 429:
+                detail = _extract_upstream_error_message(resp)
+                raise HTTPException(status_code=429, detail=detail)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("reservation_id")
+    except HTTPException:
+        raise
+    except httpx.HTTPError as exc:
+        logger.warning("Billing reservation failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Calculation usage could not be verified. Please retry.",
+        ) from exc
+
+
+async def _commit_usage(reservation_id: str | None, user_id: str, authorization: str | None, request_id: str) -> None:
+    if not reservation_id:
+        return
+    timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Request-ID": request_id,
+        "X-User-Id": user_id,
+    }
+    if authorization:
+        headers["Authorization"] = authorization
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            await client.post(
+                f"{BILLING_SERVICE_URL}/api/v1/billing/usage/commit",
+                json={"reservation_id": reservation_id},
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to commit usage: %s", exc)
+
+
+async def _release_usage(reservation_id: str | None, user_id: str, authorization: str | None, request_id: str) -> None:
+    if not reservation_id:
+        return
+    timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Request-ID": request_id,
+        "X-User-Id": user_id,
+    }
+    if authorization:
+        headers["Authorization"] = authorization
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            await client.post(
+                f"{BILLING_SERVICE_URL}/api/v1/billing/usage/release",
+                json={"reservation_id": reservation_id},
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to release usage: %s", exc)
+
+
+async def _get_user_plan(user_id: str, authorization: str | None, request_id: str) -> str:
+    timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
+    headers = {
+        "X-Request-ID": request_id,
+        "X-User-Id": user_id,
+    }
+    if authorization:
+        headers["Authorization"] = authorization
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"{BILLING_SERVICE_URL}/api/v1/billing/status", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("plan_name", "Hobby")
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Failed to check user billing plan: %s", exc)
+    return "Hobby"
+
+
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     incoming_request_id = request.headers.get("X-Request-ID")
@@ -271,19 +399,20 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     if authorization:
         upstream_headers["Authorization"] = authorization
 
-    if request.url.path == "/api/v1/billing/webhook/xendit":
-        # Log incoming headers for debugging, but redact sensitive values.
-        redacted_headers = dict(request.headers)
-        for sensitive_header in ("x-callback-token", "authorization"):
-            if sensitive_header in redacted_headers:
-                redacted_headers[sensitive_header] = "[REDACTED]"
-        logger.info("Xendit webhook headers: %s", redacted_headers)
+    for h in ("origin", "referer", "x-forwarded-host", "x-forwarded-proto"):
+        val = request.headers.get(h)
+        if val:
+            upstream_headers[h] = val
 
+    if request.url.path == "/api/v1/billing/webhook/xendit":
         callback_token = request.headers.get("x-callback-token")
         if callback_token:
             upstream_headers["x-callback-token"] = callback_token
-        else:
-            logger.warning("x-callback-token header not found in webhook request")
+
+    # Atomic usage reservation for calculate operations
+    reservation_id = None
+    if _publishable_calculate_path(request.url.path) and user_id is not None:
+        reservation_id = await _reserve_usage(user_id, authorization, request_id)
 
     timeout = httpx.Timeout(UPSTREAM_TIMEOUT_SECONDS)
 
@@ -295,9 +424,13 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
                 headers=upstream_headers,
             )
     except httpx.RequestError as exc:
+        if reservation_id:
+            await _release_usage(reservation_id, user_id, authorization, request_id)
         raise HTTPException(status_code=500, detail="Upstream service unavailable") from exc
 
     if upstream_response.status_code >= 400:
+        if reservation_id:
+            await _release_usage(reservation_id, user_id, authorization, request_id)
         raise HTTPException(
             status_code=upstream_response.status_code,
             detail=_extract_upstream_error_message(upstream_response),
@@ -306,6 +439,8 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     try:
         response_payload = upstream_response.json()
     except ValueError as exc:
+        if reservation_id:
+            await _release_usage(reservation_id, user_id, authorization, request_id)
         raise HTTPException(status_code=500, detail="Invalid upstream response") from exc
 
     if _publishable_calculate_path(request.url.path):
@@ -320,12 +455,20 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
                 response_payload,
             )
             await _publish_ledger_event(ledger_event, request_id)
+            if reservation_id:
+                await _commit_usage(reservation_id, user_id, authorization, request_id)
         except (KeyError, TypeError, ValueError) as exc:
             logger.exception("Failed to build ledger event")
+            if reservation_id:
+                await _release_usage(reservation_id, user_id, authorization, request_id)
             raise HTTPException(
                 status_code=502,
                 detail="Calculation result could not be recorded in transaction history.",
             ) from exc
+        except HTTPException:
+            if reservation_id:
+                await _release_usage(reservation_id, user_id, authorization, request_id)
+            raise
 
     return JSONResponse(
         status_code=upstream_response.status_code,
@@ -334,7 +477,7 @@ async def _proxy_post(request: Request, upstream_url: str) -> JSONResponse:
     )
 
 
-async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
+async def _proxy_get(request: Request, upstream_url: str) -> Response:
     _enforce_rate_limit(request)
 
     user_id = None
@@ -351,6 +494,19 @@ async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
     authorization = request.headers.get("Authorization")
     if authorization:
         upstream_headers["Authorization"] = authorization
+
+    for h in ("origin", "referer", "x-forwarded-host", "x-forwarded-proto"):
+        val = request.headers.get(h)
+        if val:
+            upstream_headers[h] = val
+
+    # For ledger operations, resolve user plan from billing service
+    if request.url.path in ("/api/v1/ledger/transactions", "/api/v1/ledger/export") and user_id is not None:
+        user_plan = await _get_user_plan(user_id, authorization, request_id)
+        upstream_headers["X-User-Plan"] = user_plan
+
+        if request.url.path == "/api/v1/ledger/export" and user_plan != "Pro":
+            raise HTTPException(status_code=403, detail="CSV export is only available on the Pro plan.")
 
     upstream_query = request.url.query
     resolved_upstream_url = upstream_url if not upstream_query else f"{upstream_url}?{upstream_query}"
@@ -369,6 +525,20 @@ async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
             detail=_extract_upstream_error_message(upstream_response),
         )
 
+    resp_headers = getattr(upstream_response, "headers", {})
+    content_type = resp_headers.get("Content-Type", "") if hasattr(resp_headers, "get") else ""
+    if "text/csv" in content_type:
+        return Response(
+            content=getattr(upstream_response, "content", b""),
+            media_type="text/csv",
+            headers={
+                "X-Request-ID": request_id,
+                "Content-Disposition": resp_headers.get(
+                    "Content-Disposition", "attachment; filename=math-history.csv"
+                ),
+            },
+        )
+
     try:
         response_payload = upstream_response.json()
     except ValueError as exc:
@@ -381,13 +551,15 @@ async def _proxy_get(request: Request, upstream_url: str) -> JSONResponse:
     )
 
 
+# --- Public Gateway Routes ---
+
 @app.post("/api/v1/auth/register")
 async def register(request: Request) -> JSONResponse:
     return await _proxy_post(request, _ROUTE_MAP["/api/v1/auth/register"])
 
 
 @app.get("/api/v1/auth/me")
-async def me(request: Request) -> JSONResponse:
+async def me(request: Request) -> Response:
     return await _proxy_get(request, _ROUTE_MAP["/api/v1/auth/me"])
 
 
@@ -397,13 +569,8 @@ async def login(request: Request) -> JSONResponse:
 
 
 @app.get("/api/v1/billing/status")
-async def billing_status(request: Request) -> JSONResponse:
+async def billing_status(request: Request) -> Response:
     return await _proxy_get(request, _ROUTE_MAP["/api/v1/billing/status"])
-
-
-@app.get("/api/v1/ledger/transactions")
-async def ledger_transactions(request: Request) -> JSONResponse:
-    return await _proxy_get(request, _ROUTE_MAP["/api/v1/ledger/transactions"])
 
 
 @app.post("/api/v1/billing/subscribe")
@@ -411,9 +578,44 @@ async def billing_subscribe(request: Request) -> JSONResponse:
     return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/subscribe"])
 
 
+@app.post("/api/v1/billing/cancel")
+async def billing_cancel(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/cancel"])
+
+
+@app.get("/api/v1/billing/history")
+async def billing_history(request: Request) -> Response:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/billing/history"])
+
+
+@app.get("/api/v1/billing/receipts/{payment_id}")
+async def billing_receipt(payment_id: str, request: Request) -> Response:
+    return await _proxy_get(request, f"{BILLING_SERVICE_URL}/api/v1/billing/receipts/{payment_id}")
+
+
+@app.post("/api/v1/billing/trial/start")
+async def billing_trial_start(request: Request) -> JSONResponse:
+    return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/trial/start"])
+
+
+@app.get("/api/v1/billing/usage")
+async def billing_usage(request: Request) -> Response:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/billing/usage"])
+
+
 @app.post("/api/v1/billing/webhook/xendit")
 async def billing_webhook_xendit(request: Request) -> JSONResponse:
     return await _proxy_post(request, _ROUTE_MAP["/api/v1/billing/webhook/xendit"])
+
+
+@app.get("/api/v1/ledger/transactions")
+async def ledger_transactions(request: Request) -> Response:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/ledger/transactions"])
+
+
+@app.get("/api/v1/ledger/export")
+async def ledger_export(request: Request) -> Response:
+    return await _proxy_get(request, _ROUTE_MAP["/api/v1/ledger/export"])
 
 
 @app.post("/api/v1/calculate/add")

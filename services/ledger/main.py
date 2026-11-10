@@ -1,16 +1,18 @@
 import base64
 import binascii
+import csv
+import io
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, StrictFloat, StrictInt
 from sqlalchemy import DateTime, Float, Index, String, and_, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -158,13 +160,14 @@ async def lifespan(_: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         # create_all does not alter existing tables. Old mock rows remain NULL and
         # are excluded from user-scoped history queries.
-        await conn.execute(text("ALTER TABLE ledger_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"))
-        await conn.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_ledger_records_user_created_id "
-                "ON ledger_records (user_id, created_at, id)"
+        if "postgresql" in database_url:
+            await conn.execute(text("ALTER TABLE ledger_records ADD COLUMN IF NOT EXISTS user_id VARCHAR(255)"))
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_ledger_records_user_created_id "
+                    "ON ledger_records (user_id, created_at, id)"
+                )
             )
-        )
 
     _SESSION_FACTORY = session_factory
 
@@ -211,6 +214,7 @@ async def enqueue_transaction(payload: LedgerEventIn) -> EnqueueResponse:
 @app.get("/api/v1/ledger/transactions", response_model=LedgerTransactionsResponse)
 async def get_transactions(
     user_id: str = Header(alias="X-User-Id"),
+    x_user_plan: str = Header(default="Hobby", alias="X-User-Plan"),
     limit: int = Query(default=LEDGER_DEFAULT_LIMIT, gt=0, le=LEDGER_MAX_LIMIT),
     cursor: str | None = Query(default=None),
 ) -> LedgerTransactionsResponse:
@@ -218,6 +222,12 @@ async def get_transactions(
         raise HTTPException(status_code=500, detail="Ledger database unavailable")
 
     statement = select(LedgerRecordORM).where(LedgerRecordORM.user_id == user_id)
+
+    # Server-side 7-day retention for Hobby plan users
+    if x_user_plan != "Pro":
+        seven_days_ago = datetime.now(UTC) - timedelta(days=7)
+        statement = statement.where(LedgerRecordORM.created_at >= seven_days_ago)
+
     if cursor is not None:
         cursor_created_at, cursor_id = _decode_cursor(cursor)
         statement = statement.where(
@@ -239,3 +249,55 @@ async def get_transactions(
     next_cursor = _encode_cursor(page_rows[-1]) if has_more else None
 
     return LedgerTransactionsResponse(items=items, next_cursor=next_cursor)
+
+
+@app.get("/api/v1/ledger/export")
+async def export_transactions_csv(
+    user_id: str = Header(alias="X-User-Id"),
+    x_user_plan: str = Header(default="Hobby", alias="X-User-Plan"),
+) -> Response:
+    if x_user_plan != "Pro":
+        raise HTTPException(status_code=403, detail="CSV export is only available on the Pro plan.")
+
+    if _SESSION_FACTORY is None:
+        raise HTTPException(status_code=500, detail="Ledger database unavailable")
+
+    statement = (
+        select(LedgerRecordORM)
+        .where(LedgerRecordORM.user_id == user_id)
+        .order_by(LedgerRecordORM.created_at.desc())
+    )
+
+    async with _SESSION_FACTORY() as session:
+        result = await session.execute(statement)
+        rows = list(result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "id",
+        "request_id",
+        "operation_type",
+        "operand_a",
+        "operand_b",
+        "result",
+        "math_transaction_id",
+        "created_at",
+    ])
+    for row in rows:
+        writer.writerow([
+            row.id,
+            row.request_id,
+            row.operation_type,
+            _normalize_number(row.operand_a),
+            _normalize_number(row.operand_b),
+            _normalize_number(row.result),
+            row.math_transaction_id,
+            _to_iso_z(row.created_at),
+        ])
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=math-history.csv"},
+    )

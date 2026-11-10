@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MotionButton, MotionSection } from "../../_components/motion/motion-primitives";
 import { calculateGatewayOperation, isAuthGatewayMathError, toCalculatorErrorMessage } from "../../_lib/api/math";
@@ -50,6 +51,7 @@ export default function CalculatorFocusedPage() {
       );
 
       setCalculatorState((currentState) => applyEvaluationSuccess(currentState, evaluateCommand, response.result));
+      window.dispatchEvent(new Event("maas:usage-updated"));
     } catch (error) {
       if (isAuthGatewayMathError(error)) {
         router.push(`/login?next=${encodeURIComponent("/calculator/focused")}`);
@@ -62,6 +64,11 @@ export default function CalculatorFocusedPage() {
       setIsEvaluating(false);
     }
   };
+
+  const isLimitError = calculatorState.error && (
+    calculatorState.error.toLowerCase().includes("limit") ||
+    calculatorState.error.toLowerCase().includes("quota")
+  );
 
   return (
     <>
@@ -80,8 +87,15 @@ export default function CalculatorFocusedPage() {
             <div className="mb-1 text-sm font-medium uppercase tracking-[0.15em] text-[#edf3ff]/40">Current Expression</div>
             <div className="mb-2 max-w-full truncate text-right text-xs uppercase tracking-[0.1em] text-[#edf3ff]/40">{calculatorState.expression}</div>
             {calculatorState.error ? (
-              <div role="alert" className="mb-2 max-w-full truncate text-right text-xs font-semibold tracking-[0.08em] text-[#ff8da6]">
-                {calculatorState.error}
+              <div role="alert" className="mb-2 max-w-full text-right text-xs font-semibold tracking-[0.08em] text-[#ff8da6]">
+                <div>{calculatorState.error}</div>
+                {isLimitError ? (
+                  <div className="mt-1">
+                    <Link href="/billing" className="text-white underline hover:text-[#ffd6e0]">
+                      Upgrade to Pro for unlimited calculations &rarr;
+                    </Link>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <output className="text-5xl font-bold tracking-tight text-white md:text-6xl" aria-live="polite" aria-label="Calculator result">

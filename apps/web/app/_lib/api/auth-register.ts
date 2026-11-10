@@ -1,3 +1,4 @@
+import { getGatewayBaseUrl } from "./gateway-url";
 const DEFAULT_GATEWAY_URL = "";
 const FALLBACK_ERROR_MESSAGE = "Unable to provision account. Please try again.";
 
@@ -19,13 +20,7 @@ type GatewayErrorResponse = {
 };
 
 function resolveGatewayBaseUrl() {
-  const value = process.env.NEXT_PUBLIC_API_GATEWAY_URL?.trim();
-
-  if (!value) {
-    return DEFAULT_GATEWAY_URL;
-  }
-
-  return value.endsWith("/") ? value.slice(0, -1) : value;
+  return getGatewayBaseUrl();
 }
 
 export async function register(input: RegisterInput): Promise<RegisterResponse> {

@@ -67,6 +67,7 @@ services:
       - BILLING_SERVICE_URL=http://billing:8000
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=HS256
+      - CORS_ORIGINS=
     logging: *default-logging
     depends_on: # Define services to depend on to ensure they start first
       - identity

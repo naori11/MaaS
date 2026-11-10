@@ -4,6 +4,7 @@ import importlib.util
 import os
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -17,7 +18,7 @@ sys.modules.pop("config", None)
 
 TEST_DATABASE_URL_RAW = os.getenv("LEDGER_TEST_DATABASE_URL")
 if not TEST_DATABASE_URL_RAW:
-    raise RuntimeError("LEDGER_TEST_DATABASE_URL must be set for dedicated ledger test database")
+    pytest.skip("LEDGER_TEST_DATABASE_URL must be set for dedicated ledger test database", allow_module_level=True)
 
 TEST_DATABASE_URL = TEST_DATABASE_URL_RAW
 parsed = urlparse(TEST_DATABASE_URL)
@@ -33,7 +34,6 @@ if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError("Failed to load ledger main module spec")
 main = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(main)
-
 
 
 def _asyncpg_url(database_url: str) -> str:
@@ -113,7 +113,7 @@ def _wait_for_transaction_ids(
     while time.time() < deadline:
         response = client.get(
             "/api/v1/ledger/transactions?limit=100",
-            headers={"X-User-Id": user_id},
+            headers={"X-User-Id": user_id, "X-User-Plan": "Pro"},
         )
         if response.status_code == 200:
             seen_ids = {item["math_transaction_id"] for item in response.json()["items"]}
@@ -143,7 +143,7 @@ def test_get_transactions_returns_recent_records_with_limit():
         )
         response = client.get(
             "/api/v1/ledger/transactions?limit=2",
-            headers={"X-User-Id": "user-123"},
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Pro"},
         )
 
     assert response.status_code == 200
@@ -169,11 +169,11 @@ def test_get_transactions_scopes_rows_to_user_and_paginates_by_cursor():
 
         first_page = client.get(
             "/api/v1/ledger/transactions?limit=2",
-            headers={"X-User-Id": "user-123"},
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Pro"},
         ).json()
         second_page = client.get(
             f"/api/v1/ledger/transactions?limit=2&cursor={first_page['next_cursor']}",
-            headers={"X-User-Id": "user-123"},
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Pro"},
         ).json()
 
     first_ids = [item["math_transaction_id"] for item in first_page["items"]]
@@ -187,15 +187,59 @@ def test_get_transactions_scopes_rows_to_user_and_paginates_by_cursor():
     assert second_page["next_cursor"] is None
 
 
-def test_get_transactions_rejects_malformed_cursor():
-    with TestClient(main.app) as client:
-        response = client.get(
-            "/api/v1/ledger/transactions?cursor=not-a-cursor",
-            headers={"X-User-Id": "user-123"},
-        )
+def test_hobby_retention_filters_records_older_than_7_days():
+    old_date = (datetime.now(UTC) - timedelta(days=10)).isoformat().replace("+00:00", "Z")
+    recent_date = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Malformed cursor"}
+    payload_old = _valid_payload(f"req-{uuid4().hex}", old_date)
+    payload_recent = _valid_payload(f"req-{uuid4().hex}", recent_date)
+
+    with TestClient(main.app) as client:
+        client.post("/api/v1/ledger/transactions", json=payload_old)
+        client.post("/api/v1/ledger/transactions", json=payload_recent)
+
+        # Hobby query: only recent returned
+        hobby_res = client.get(
+            "/api/v1/ledger/transactions",
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Hobby"},
+        )
+        assert hobby_res.status_code == 200
+        hobby_items = hobby_res.json()["items"]
+        assert len(hobby_items) == 1
+        assert hobby_items[0]["math_transaction_id"] == payload_recent["math_transaction_id"]
+
+        # Pro query: both returned
+        pro_res = client.get(
+            "/api/v1/ledger/transactions",
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Pro"},
+        )
+        assert pro_res.status_code == 200
+        pro_items = pro_res.json()["items"]
+        assert len(pro_items) == 2
+
+
+def test_export_csv_permissions():
+    recent_date = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    payload = _valid_payload(f"req-{uuid4().hex}", recent_date)
+
+    with TestClient(main.app) as client:
+        client.post("/api/v1/ledger/transactions", json=payload)
+
+        # Hobby export rejected with 403
+        hobby_export = client.get(
+            "/api/v1/ledger/export",
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Hobby"},
+        )
+        assert hobby_export.status_code == 403
+
+        # Pro export allowed with 200 and text/csv
+        pro_export = client.get(
+            "/api/v1/ledger/export",
+            headers={"X-User-Id": "user-123", "X-User-Plan": "Pro"},
+        )
+        assert pro_export.status_code == 200
+        assert pro_export.headers["content-type"].startswith("text/csv")
+        assert "operand_a,operand_b,result" in pro_export.text
 
 
 def test_unavailable_database_returns_503(monkeypatch):

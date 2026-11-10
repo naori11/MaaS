@@ -1,7 +1,8 @@
 import { toApiClientError } from "./errors";
 import { clearAuthSession } from "../auth/session";
 
-const GATEWAY_BASE_URL = (process.env.NEXT_PUBLIC_API_GATEWAY_URL ?? "").replace(/\/$/, "");
+import { getGatewayBaseUrl } from "./gateway-url";
+const GATEWAY_BASE_URL = getGatewayBaseUrl();
 
 type RequestOptions = {
   method?: "GET" | "POST";
@@ -37,7 +38,7 @@ export async function requestJson<TResponse>(path: string, options: RequestOptio
 
   const target = path.startsWith("/") ? path : `/${path}`;
 
-  const response = await fetch(`${GATEWAY_BASE_URL}${target}`, {
+  const response = await fetch(`${getGatewayBaseUrl()}${target}`, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
