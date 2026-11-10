@@ -312,9 +312,10 @@ def test_rate_limit_resets_across_windows(monkeypatch):
 
 
 def test_billing_status_forwards_get_request_with_authorization():
+    token = _valid_gateway_token()
     response = client.get(
         "/api/v1/billing/status",
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-status-123"},
+        headers={"Authorization": f"Bearer {token}", "X-Request-ID": "req-status-123"},
     )
 
     assert response.status_code == 200
@@ -324,14 +325,15 @@ def test_billing_status_forwards_get_request_with_authorization():
     assert req["method"] == "GET"
     assert req["url"] == f"{main.BILLING_SERVICE_URL}/api/v1/billing/status"
     assert req["headers"]["X-User-Id"] == "user-123"
-    assert req["headers"]["Authorization"] == f"Bearer {_valid_gateway_token()}"
+    assert req["headers"]["Authorization"] == f"Bearer {token}"
     assert req["headers"]["X-Request-ID"] == "req-status-123"
 
 
 def test_auth_me_route_forwards_get_request_with_authorization():
+    token = _valid_gateway_token()
     response = client.get(
         "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {_valid_gateway_token()}", "X-Request-ID": "req-me-123"},
+        headers={"Authorization": f"Bearer {token}", "X-Request-ID": "req-me-123"},
     )
 
     assert response.status_code == 200
@@ -340,7 +342,7 @@ def test_auth_me_route_forwards_get_request_with_authorization():
     assert req["method"] == "GET"
     assert req["url"] == f"{main.IDENTITY_SERVICE_URL}/api/v1/auth/me"
     assert req["headers"]["X-User-Id"] == "user-123"
-    assert req["headers"]["Authorization"] == f"Bearer {_valid_gateway_token()}"
+    assert req["headers"]["Authorization"] == f"Bearer {token}"
     assert req["headers"]["X-Request-ID"] == "req-me-123"
 
 
