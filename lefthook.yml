@@ -1,7 +1,13 @@
 # ============================================================================
-# Lefthook Pre-commit Configuration
+# Lefthook Git Hooks Configuration
 # Local AI Pre-commit Code Reviewer v2.0.0
+# Commit Message Linting via commitlint
 # ============================================================================
+
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no -- commitlint --edit {1}
 
 pre-commit:
   parallel: false
