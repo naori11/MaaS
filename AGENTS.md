@@ -97,6 +97,25 @@ http://localhost:4000/docs
 - The web app is mostly shell/navigation/layout code plus thin API adapters and cookie/session helpers.
 - Service configuration is env-driven and usually flows through per-service `config.py` helpers.
 
+## Pre-commit AI Review
+
+This repo uses Lefthook pre-commit hooks with AI-powered code review.
+After every commit, the hooks may produce a `.precommit-review.json`
+report file.
+
+### Rules for AI agents
+
+1. **Do NOT use `--no-verify`** unless the user explicitly requests it.
+2. After each `git commit`, check if `.precommit-review.json` exists
+   and was updated in the last 30 seconds.
+3. If the report contains findings (status != "pass"), read them and
+   address the issues before proceeding.
+4. Re-stage fixes and commit again. The hooks will re-run.
+5. The QA check (deterministic) is a hard blocker — fix lint and
+   debug artifacts before retrying.
+6. Security and hallucination findings are advisory — address HIGH
+   and CRITICAL severity items; MEDIUM/LOW can be noted and deferred.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

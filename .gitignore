@@ -83,3 +83,9 @@ Thumbs.db
 .gitnexus
 graphify-out/
 services/nginx/certs/
+
+# Pre-commit review artifacts
+scripts/precommit/__pycache__/
+.precommit-review.json
+.precommit-review.json.lock
+.precommit-review.tmp.*
