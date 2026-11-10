@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import jwt
@@ -30,6 +31,7 @@ from config import (
     get_xendit_components_origins,
     get_xendit_secret_key,
 )
+
 logger = logging.getLogger(__name__)
 
 PLAN_PRICING = {
@@ -616,12 +618,11 @@ async def billing_subscribe(
     caller_origin = payload.origin or origin
     if not caller_origin and referer:
         try:
-            from urllib.parse import urlparse
             p = urlparse(referer)
             if p.scheme and p.netloc:
                 caller_origin = f"{p.scheme}://{p.netloc}"
-        except Exception:
-            pass
+        except ValueError as exc:
+            logger.debug("Failed to parse referer: %s", exc)
     if not caller_origin and x_forwarded_host:
         proto = x_forwarded_proto or "https"
         caller_origin = f"{proto}://{x_forwarded_host}"

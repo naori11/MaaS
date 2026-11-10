@@ -13,6 +13,7 @@ from jwt import InvalidTokenError
 
 from config import (
     BILLING_SERVICE_URL,
+    CORS_ORIGINS,
     IDENTITY_SERVICE_URL,
     JWT_ALGORITHM,
     JWT_SECRET,
@@ -25,8 +26,6 @@ from config import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SECONDS,
     UPSTREAM_TIMEOUT_SECONDS,
-    CORS_ORIGINS,
-    get_cors_origins,
 )
 
 logger = logging.getLogger(__name__)
