@@ -148,6 +148,21 @@ See [`.github/pull_request_template.md`](.github/pull_request_template.md) for t
 | --- | --- | --- |
 | [commitlint](https://commitlint.js.org/) | Validates commit messages on every commit | `commitlint.config.js` |
 | [Lefthook](https://github.com/evilmartians/lefthook) | Runs git hooks (commit-msg + pre-commit) | `lefthook.yml` |
+| [Smart Commit](docs/WORKFLOW_AUTOMATIONS.md) | Automatic monorepo grouping and conventional commits | `scripts/smart_commit.py` |
+
+### Workflow Automations & Guide
+
+For comprehensive documentation on pre-commit review gates, AI security/hallucination scanners, and smart commit options, see:
+👉 [**Workflow & Automation Guide**](docs/WORKFLOW_AUTOMATIONS.md)
+
+Quick commit shortcuts:
+- `pnpm commit`: Standard interactive commit with atomic scope clustering
+- `pnpm commit:pick`: Interactive file picker
+- `pnpm commit:dry`: Preview proposed commit groups and messages
+- `pnpm commit:staged`: Commit only files already staged with `git add`
+- `pnpm commit:codex`: Fast commit message generation using Codex CLI
+- `pnpm commit:fast`: Instant offline commit using deterministic rules
+- `pnpm commit:auto`: Non-interactive execution (for agents after approval)
 
 ### Setup
 
