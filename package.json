@@ -8,7 +8,14 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "prepare": "npx lefthook install"
+    "prepare": "npx lefthook install",
+    "commit": "python scripts/smart_commit.py",
+    "commit:pick": "python scripts/smart_commit.py --pick",
+    "commit:staged": "python scripts/smart_commit.py --staged-only",
+    "commit:dry": "python scripts/smart_commit.py --dry-run",
+    "commit:auto": "python scripts/smart_commit.py --yes",
+    "commit:codex": "python scripts/smart_commit.py --backend codex",
+    "commit:fast": "python scripts/smart_commit.py --yes --backend heuristic"
   },
   "keywords": [],
   "author": "",
