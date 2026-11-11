@@ -15,7 +15,12 @@
     "commit:dry": "python scripts/smart_commit.py --dry-run",
     "commit:auto": "python scripts/smart_commit.py --yes",
     "commit:codex": "python scripts/smart_commit.py --backend codex",
-    "commit:fast": "python scripts/smart_commit.py --yes --backend heuristic"
+    "commit:fast": "python scripts/smart_commit.py --yes --backend heuristic",
+    "pr": "python scripts/smart_pr.py",
+    "pr:dry": "python scripts/smart_pr.py --dry-run",
+    "pr:auto": "python scripts/smart_pr.py --yes",
+    "pr:ready": "python scripts/smart_pr.py --no-draft",
+    "pr:json": "python scripts/smart_pr.py --json"
   },
   "keywords": [],
   "author": "",
