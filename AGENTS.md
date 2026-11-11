@@ -119,6 +119,18 @@ report file.
 6. Security and hallucination findings are advisory — address HIGH
    and CRITICAL severity items; MEDIUM/LOW can be noted and deferred.
 
+### PR Creation Protocol
+
+0. **Always use the PR script**: `python scripts/smart_pr.py`
+1. **Preview first**: Run `python scripts/smart_pr.py --dry-run` and present
+   the proposed PR title and body to the user.
+2. **Wait for approval**: Only execute `python scripts/smart_pr.py --yes`
+   after the user approves the preview.
+3. **PRs are draft by default**: Use `--no-draft` only when the user
+   explicitly asks for a ready-for-review PR.
+4. **Prerequisite**: `gh` CLI must be installed and authenticated
+   (`gh auth login`).
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

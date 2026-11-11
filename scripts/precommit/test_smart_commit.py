@@ -6,6 +6,7 @@ import subprocess
 from smart_commit import (
     CommitGroup,
     FileChange,
+    execute_commit,
     generate_heuristic_message,
     group_files_semantically,
     matches_path_filters,
@@ -14,6 +15,7 @@ from smart_commit import (
     resolve_file_metadata,
     sanitize_header,
     should_ignore_file,
+    unstage_all,
     wrap_text,
 )
 
@@ -240,4 +242,94 @@ class TestUnicodeAndEncodingSafety:
         assert res == "ok"
         assert captured_kwargs.get("encoding") == "utf-8"
         assert captured_kwargs.get("errors") == "replace"
+
+
+class TestCommitExecutionAndStagingIsolation:
+    def test_unstage_all_when_head_exists(self, monkeypatch):
+        commands_run = []
+
+        def mock_run_git(args, **kwargs):
+            commands_run.append(args)
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("smart_commit.run_git", mock_run_git)
+        success = unstage_all()
+        assert success is True
+        assert commands_run[0] == ["rev-parse", "--verify", "HEAD"]
+        assert commands_run[1] == ["restore", "--staged", "."]
+
+    def test_unstage_all_when_head_missing(self, monkeypatch):
+        commands_run = []
+
+        def mock_run_git(args, **kwargs):
+            commands_run.append(args)
+            if args == ["rev-parse", "--verify", "HEAD"]:
+                return subprocess.CompletedProcess(args, 1, stdout="", stderr="fatal: Not a valid object name HEAD")
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("smart_commit.run_git", mock_run_git)
+        success = unstage_all()
+        assert success is True
+        assert commands_run[0] == ["rev-parse", "--verify", "HEAD"]
+        assert commands_run[1] == ["rm", "--cached", "-r", "."]
+
+    def test_execute_commit_unstages_prior_and_commits_atomically(self, monkeypatch):
+        commands_run = []
+
+        def mock_run_git(args, **kwargs):
+            commands_run.append(args)
+            if args == ["diff", "--cached", "--name-only"]:
+                return subprocess.CompletedProcess(args, 0, stdout="apps/web/page.tsx\n", stderr="")
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("smart_commit.run_git", mock_run_git)
+
+        group = CommitGroup(
+            group_id="scope_web",
+            scope="web",
+            category="app",
+            files=[FileChange(status="M", path="apps/web/page.tsx", scope="web", category="app")],
+            header="feat(web): add dashboard navigation",
+            body="Adds navigation header.",
+        )
+
+        ok = execute_commit(group, dry_run=False)
+        assert ok is True
+
+        # Verify execution order:
+        # 1. unstage_all (rev-parse HEAD, restore --staged .)
+        # 2. add -- apps/web/page.tsx
+        # 3. diff --cached --name-only
+        # 4. commit -m ... -m ...
+        assert commands_run[0] == ["rev-parse", "--verify", "HEAD"]
+        assert commands_run[1] == ["restore", "--staged", "."]
+        assert commands_run[2] == ["add", "--", "apps/web/page.tsx"]
+        assert commands_run[3] == ["diff", "--cached", "--name-only"]
+        assert commands_run[4][:3] == ["commit", "-m", "feat(web): add dashboard navigation"]
+
+    def test_execute_commit_skips_gracefully_when_no_staged_changes(self, monkeypatch):
+        commands_run = []
+
+        def mock_run_git(args, **kwargs):
+            commands_run.append(args)
+            if args == ["diff", "--cached", "--name-only"]:
+                # Empty diff - already committed
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("smart_commit.run_git", mock_run_git)
+
+        group = CommitGroup(
+            group_id="scope_build",
+            scope="build",
+            category="build",
+            files=[FileChange(status="M", path="package.json", scope="build", category="build")],
+            header="build: add pull request command aliases",
+        )
+
+        ok = execute_commit(group, dry_run=False)
+        assert ok is True
+        # commit command should NOT have been run
+        assert not any(cmd[0] == "commit" for cmd in commands_run)
+
 

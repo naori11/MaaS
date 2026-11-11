@@ -354,6 +354,16 @@ def run_git(args: list[str], cwd: Path | None = None) -> subprocess.CompletedPro
     )
 
 
+def unstage_all(cwd: Path | None = None) -> bool:
+    """Safely unstage all staged files from the git index without modifying the working tree."""
+    head_proc = run_git(["rev-parse", "--verify", "HEAD"], cwd=cwd)
+    if head_proc.returncode == 0:
+        proc = run_git(["restore", "--staged", "."], cwd=cwd)
+    else:
+        proc = run_git(["rm", "--cached", "-r", "."], cwd=cwd)
+    return proc.returncode == 0
+
+
 def get_changed_files(
     staged_only: bool = False,
     include_untracked: bool = True,
@@ -744,14 +754,25 @@ def execute_commit(group: CommitGroup, dry_run: bool = False) -> bool:
     print(f"│  Header: {UI.green(group.header)}")
     print(f"│  Staging {len(file_paths)} file(s)...")
 
-    # 1. Stage files
+    # 1. Ensure staging index has no pre-staged files to guarantee atomic isolation
+    unstage_all()
+
+    # 2. Stage files for this group
     add_proc = run_git(["add", "--"] + file_paths)
     if add_proc.returncode != 0:
         print(f"│  {UI.red('[ERROR] Failed to stage files:')} {add_proc.stderr}", file=sys.stderr)
         print(f"└{'─' * 60}")
         return False
 
-    # 2. Commit files
+    # 3. Verify changes were actually staged for this group
+    diff_proc = run_git(["diff", "--cached", "--name-only"])
+    staged = [f.strip() for f in diff_proc.stdout.splitlines() if f.strip()]
+    if not staged:
+        print(f"│  {UI.yellow('[WARN] No staged changes detected for this group (files may already be committed). Skipping.')}")
+        print(f"└{'─' * 60}")
+        return True
+
+    # 4. Commit files
     commit_args = ["commit", "-m", group.header]
     if group.body:
         commit_args.extend(["-m", group.body])
@@ -761,13 +782,13 @@ def execute_commit(group: CommitGroup, dry_run: bool = False) -> bool:
     if commit_proc.returncode != 0:
         print(f"│  {UI.red('[ERROR] Git commit failed:')}\n{commit_proc.stderr or commit_proc.stdout}", file=sys.stderr)
         print(f"│  {UI.yellow('[INFO] Rolling back staged changes for this group...')}", file=sys.stderr)
-        run_git(["restore", "--staged", "--"] + file_paths)
+        unstage_all()
         print(f"└{'─' * 60}")
         return False
 
     print(f"│  {UI.green('[SUCCESS]')} Committed successfully!")
 
-    # 3. Check .precommit-review.json if created
+    # 5. Check .precommit-review.json if created
     review_file = REPO_ROOT / ".precommit-review.json"
     if review_file.is_file():
         try:
@@ -990,6 +1011,9 @@ def main() -> int:
     if len(groups_to_commit) < len(groups):
         skipped_count = len(groups) - len(groups_to_commit)
         print(f"[INFO] Committing {len(groups_to_commit)} group(s); skipping {skipped_count} group(s).")
+
+    # Unstage any pre-staged files to ensure each group commits in total isolation
+    unstage_all()
 
     all_success = True
     for idx, group in groups_to_commit:
