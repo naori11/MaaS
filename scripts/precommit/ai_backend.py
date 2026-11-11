@@ -62,11 +62,13 @@ def detect_antigravity() -> bool:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
         return proc.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeError):
         return False
 
 
@@ -118,11 +120,13 @@ def detect_codex() -> bool:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
         return proc.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeError):
         return False
 
 
@@ -204,13 +208,16 @@ def invoke_antigravity(
             input=stdin_input,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout + 5,
             check=False,
         )
         if proc.returncode != 0:
             err_msg = proc.stderr.strip() or proc.stdout.strip()
-            from review_output import safe_print
-            safe_print(f"[WARN] Antigravity CLI exited with code {proc.returncode}: {err_msg[:200]}")
+            if os.environ.get("PRECOMMIT_DEBUG") == "1":
+                from review_output import safe_print
+                safe_print(f"[DEBUG] Antigravity CLI exited with code {proc.returncode}: {err_msg[:200]}")
             return None
 
         # agy returns JSON with a 'response' field
@@ -221,9 +228,10 @@ def invoke_antigravity(
             return proc.stdout
         except json.JSONDecodeError:
             return proc.stdout.strip() if proc.stdout else None
-    except (OSError, subprocess.SubprocessError) as exc:
-        from review_output import safe_print
-        safe_print(f"[WARN] Antigravity CLI call failed: {exc}")
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
+        if os.environ.get("PRECOMMIT_DEBUG") == "1":
+            from review_output import safe_print
+            safe_print(f"[DEBUG] Antigravity CLI call failed: {exc}")
         return None
 
 
@@ -247,6 +255,8 @@ def invoke_codex(
             input=full_prompt,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -256,7 +266,7 @@ def invoke_codex(
             safe_print(f"[WARN] Codex CLI exited with code {proc.returncode}: {err_msg[:200]}")
             return None
         return proc.stdout.strip() if proc.stdout else None
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         from review_output import safe_print
         safe_print(f"[WARN] Codex CLI call failed: {exc}")
         return None

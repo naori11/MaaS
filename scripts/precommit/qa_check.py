@@ -49,6 +49,8 @@ def get_staged_files() -> list[str]:
             ["git", "diff", "--cached", "--name-only"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -111,6 +113,8 @@ def check_python_lint(py_files: list[str], repo_root: Path) -> list[dict[str, An
                 cwd=str(svc_dir),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=20,
                 check=False,
             )
@@ -155,6 +159,8 @@ def check_python_lint(py_files: list[str], repo_root: Path) -> list[dict[str, An
                 cwd=str(repo_root),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=20,
                 check=False,
             )

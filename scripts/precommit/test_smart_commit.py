@@ -1,6 +1,7 @@
 """Unit tests for smart_commit.py."""
 
 import re
+import subprocess
 
 from smart_commit import (
     CommitGroup,
@@ -15,6 +16,8 @@ from smart_commit import (
     should_ignore_file,
     wrap_text,
 )
+
+from precommit.ai_backend import invoke_antigravity, invoke_codex
 
 CONVENTIONAL_HEADER_REGEX = re.compile(
     r"^(feat|fix|docs|build|refactor|chore|ci|test|revert|perf)"
@@ -205,3 +208,36 @@ class TestSelectionAndFiltering:
         assert matches_path_filters("services/billing/main.py", ["services/billing/main.py"]) is True
         assert matches_path_filters("services/ledger/db.py", ["*.py"]) is True
         assert matches_path_filters("package.json", ["apps/web"]) is False
+
+
+class TestUnicodeAndEncodingSafety:
+    def test_invoke_codex_with_unicode_characters(self, monkeypatch):
+        captured_kwargs = {}
+
+        def mock_run(cmd, **kwargs):
+            captured_kwargs.update(kwargs)
+            return subprocess.CompletedProcess(cmd, 0, stdout="test response", stderr="")
+
+        monkeypatch.setattr("precommit.ai_backend.get_codex_bin", lambda: "codex")
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        res = invoke_codex("Prompt with pointer emoji \U0001f449 and quotes \u201ctest\u201d")
+        assert res == "test response"
+        assert captured_kwargs.get("encoding") == "utf-8"
+        assert captured_kwargs.get("errors") == "replace"
+
+    def test_invoke_antigravity_with_unicode_characters(self, monkeypatch):
+        captured_kwargs = {}
+
+        def mock_run(cmd, **kwargs):
+            captured_kwargs.update(kwargs)
+            return subprocess.CompletedProcess(cmd, 0, stdout='{"response": "ok"}', stderr="")
+
+        monkeypatch.setattr("precommit.ai_backend.get_antigravity_bin", lambda: "agy")
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        res = invoke_antigravity("Long prompt with emoji \U0001f449 " * 500)
+        assert res == "ok"
+        assert captured_kwargs.get("encoding") == "utf-8"
+        assert captured_kwargs.get("errors") == "replace"
+

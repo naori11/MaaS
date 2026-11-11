@@ -61,6 +61,8 @@ def get_staged_files() -> list[str]:
             ["git", "diff", "--cached", "--name-only"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -95,6 +97,8 @@ def get_diff_for_files(files: list[str]) -> str:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
@@ -106,6 +110,8 @@ def get_diff_for_files(files: list[str]) -> str:
             ["git", "diff", "HEAD", "--", *files],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
