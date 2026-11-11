@@ -124,10 +124,9 @@ pnpm install
 | `RATE_LIMIT_REQUESTS` | Optional | Gateway rate-limit threshold |
 | `RATE_LIMIT_WINDOW_SECONDS` | Optional | Gateway rate-limit window |
 | `UPSTREAM_TIMEOUT_SECONDS` | Optional | Gateway upstream timeout |
-| `LEDGER_PUBLISH_TIMEOUT_SECONDS` | Optional | Gateway async ledger publish timeout |
+| `LEDGER_PUBLISH_TIMEOUT_SECONDS` | Optional | Gateway timeout while waiting for Ledger to confirm persisted history |
 | `LEDGER_DEFAULT_LIMIT` | Optional | Default ledger query limit |
 | `LEDGER_MAX_LIMIT` | Optional | Max ledger query limit |
-| `LEDGER_QUEUE_MAXSIZE` | Optional | Ledger ingest queue size |
 
 > Security note: never commit `.env` or real secrets. Use sandbox/test keys for local development.
 

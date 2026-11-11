@@ -7,13 +7,23 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "prepare": "npx lefthook install",
+    "commit": "python scripts/smart_commit.py",
+    "commit:pick": "python scripts/smart_commit.py --pick",
+    "commit:staged": "python scripts/smart_commit.py --staged-only",
+    "commit:dry": "python scripts/smart_commit.py --dry-run",
+    "commit:auto": "python scripts/smart_commit.py --yes",
+    "commit:codex": "python scripts/smart_commit.py --backend codex",
+    "commit:fast": "python scripts/smart_commit.py --yes --backend heuristic"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "turbo": "^2.9.18"
   }
 }

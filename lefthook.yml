@@ -1,0 +1,25 @@
+# ============================================================================
+# Lefthook Git Hooks Configuration
+# Local AI Pre-commit Code Reviewer v2.0.0
+# Commit Message Linting via commitlint
+# ============================================================================
+
+commit-msg:
+  commands:
+    commitlint:
+      run: npx --no -- commitlint --edit {1}
+
+pre-commit:
+  parallel: false
+  commands:
+    qa-check:
+      glob: "*.{ts,tsx,js,jsx,py}"
+      run: bash scripts/precommit/qa_check.sh {staged_files}
+
+    security-review:
+      glob: "*.{ts,tsx,js,jsx,py,yml,yaml,json,env}"
+      run: python -X utf8 scripts/precommit/security_review.py {staged_files}
+
+    hallucination-review:
+      glob: "*.{ts,tsx,js,jsx,py}"
+      run: python -X utf8 scripts/precommit/hallucination_review.py {staged_files}
