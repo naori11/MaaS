@@ -105,6 +105,9 @@ report file.
 
 ### Rules for AI agents
 
+0. **Automated Commits via Script**: **NEVER run raw `git add` or `git commit` commands directly.** Always use `python scripts/smart_commit.py`.
+   - **Approval Protocol**: Run `python scripts/smart_commit.py --dry-run` first, present the proposed commit groups and messages to the user in chat, and **wait for user approval**.
+   - **Commit Execution**: Only execute `python scripts/smart_commit.py --yes` (or `pnpm commit:auto`) once the user has approved the proposal. The script clusters files by monorepo scope, generates conventional commit messages, and commits them atomically.
 1. **Do NOT use `--no-verify`** unless the user explicitly requests it.
 2. After each `git commit`, check if `.precommit-review.json` exists
    and was updated in the last 30 seconds.
